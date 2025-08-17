@@ -51,6 +51,8 @@
 		E130C9742E4EA505009DCC95 /* FoundationModels.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FoundationModels.framework; path = System/Library/Frameworks/FoundationModels.framework; sourceTree = SDKROOT; };
 		E174BC322E51349700BB3125 /* RoboSantaSpeaker.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = RoboSantaSpeaker.xcodeproj; sourceTree = "<group>"; };
 		E174BE312E51361B00BB3125 /* RoboSantaSpeaker */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = RoboSantaSpeaker; sourceTree = BUILT_PRODUCTS_DIR; };
+		E1ACC93E2E51D25700368AA9 /* ExtensionFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExtensionFoundation.framework; path = System/Library/Frameworks/ExtensionFoundation.framework; sourceTree = SDKROOT; };
+		E1ACC9402E51D26400368AA9 /* ModelIO.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ModelIO.framework; path = System/Library/Frameworks/ModelIO.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -108,6 +110,8 @@
 		E103C8B52E4E67CE007662B4 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				E1ACC9402E51D26400368AA9 /* ModelIO.framework */,
+				E1ACC93E2E51D25700368AA9 /* ExtensionFoundation.framework */,
 				E130C9742E4EA505009DCC95 /* FoundationModels.framework */,
 				E103C8B72E4E67CE007662B4 /* Phidget22.framework */,
 				E103C8B62E4E67CE007662B4 /* Phidget22Extra.framework */,

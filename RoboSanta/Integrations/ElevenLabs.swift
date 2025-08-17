@@ -43,11 +43,13 @@ struct ElevenLabs: Speak {
         let previous_text: String
     }
     
-    func say(_ text: String) async {
+    func say(_ label: String, _ text: String) async {
         guard let apiKey = getAPIKey("Elevenlabs API Key"), !apiKey.isEmpty else {
             print("Missing ElevenLabs API key")
             return
         }
+        let cleaned = text.removingEmojis().trimmingCharacters(in: .whitespacesAndNewlines)
+        print("\(label): \(cleaned)")
         do {
             let url = "https://api.elevenlabs.io/v1/text-to-speech/\(voiceID)?output_format=\(outputFormat)&optimize_streaming_latency=4"
             var req = URLRequest(url: URL(string: url)!)
@@ -55,7 +57,7 @@ struct ElevenLabs: Speak {
             req.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try JSONEncoder().encode(Input(
-                text: text,
+                text: cleaned,
                 model_id: modelID,
                 language_code: language,
                 voice_settings: VoiceSettings(

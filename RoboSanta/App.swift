@@ -4,17 +4,20 @@ import AVFoundation
 @main
 struct App {
     
-    static let prompt = "Write in Swedish: one very short line (max 25 words) for a Santa figure in an office corridor to say to passersby. Vary each time; mostly positive, sometimes lightly cynical or unexpectedly funny. Avoid clichés/stereotypes; not corny; no “ho ho ho” or emojis. EXACTLY one sentence, one variant. Output ONLY the line—no quotes, explanations, or meta."
+    static let commonSuffix = " Vary each time; mostly positive, sometimes lightly cynical or unexpectedly funny. Avoid clichés or stereotypes. Get right to the point. Nothing too corny."
+    
+    static let prompt = "Write in Swedish: Something for Santa Claus to say during December." + commonSuffix
     
     static func main() async {
-        let thinker: Think = AppleIntelligence()
+        let thinker: Think = AppleIntelligence() // OpenAI()
         let speaker: Speak = RoboSantaSpeaker() // ElevenLabs()
         while true {
-            print("Thinking")
-            if let phrase = await thinker.generateText(prompt) {
-                print("Speaking: \(phrase)")
-                await speaker.say(phrase)
-                print("Done")
+            if let answer = await thinker.generateText(prompt, passByAndGreetSchema) {
+                await speaker.say("Greeting", answer.value("firstPhrase"))
+                await speaker.say("Followup", answer.value("secondPhrase"))
+                await speaker.say("Ending", answer.value("thirdPhrase"))
+                print("")
+                sleep(1)
             }
         }
     }

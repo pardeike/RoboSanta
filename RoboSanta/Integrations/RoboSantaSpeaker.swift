@@ -2,11 +2,9 @@ import AVFAudio
 
 @MainActor
 struct RoboSantaSpeaker: Speak {
-    func say(_ text: String) async {
-        
-        let cleaned = text
-            .replacingOccurrences(of: "Ho, ", with: "Ho ")
-            .replacingOccurrences(of: "ho, ", with: "ho ")
+    func say(_ label: String, _ text: String) async {
+        let cleaned = text.removingEmojis().trimmingCharacters(in: .whitespacesAndNewlines)
+        print("\(label): \(cleaned)")
         
         let process = Process()
         process.executableURL = Bundle.main.bundleURL.appending(components: "RoboSantaSpeaker")
