@@ -10,6 +10,7 @@
 		E103CA032E4E6B76007662B4 /* Phidget22.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E103C8B72E4E67CE007662B4 /* Phidget22.framework */; };
 		E174BE3D2E5137A000BB3125 /* RoboSantaSpeaker in CopyFiles */ = {isa = PBXBuildFile; fileRef = E174BE312E51361B00BB3125 /* RoboSantaSpeaker */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		E1AAC2482E4EBCC5005E9045 /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E130C9742E4EA505009DCC95 /* FoundationModels.framework */; };
+		E1C817832E55163B00DD75E9 /* Ollama in Frameworks */ = {isa = PBXBuildFile; productRef = E1C817822E55163B00DD75E9 /* Ollama */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -73,6 +74,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E1C817832E55163B00DD75E9 /* Ollama in Frameworks */,
 				E103CA032E4E6B76007662B4 /* Phidget22.framework in Frameworks */,
 				E1AAC2482E4EBCC5005E9045 /* FoundationModels.framework in Frameworks */,
 			);
@@ -147,6 +149,7 @@
 			);
 			name = RoboSanta;
 			packageProductDependencies = (
+				E1C817822E55163B00DD75E9 /* Ollama */,
 			);
 			productName = RoboSanta;
 			productReference = E103C7692E4E671D007662B4 /* RoboSanta */;
@@ -202,6 +205,9 @@
 			);
 			mainGroup = E103C7602E4E671D007662B4;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E1C8177D2E55152200DD75E9 /* XCRemoteSwiftPackageReference "ollama-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E103C76A2E4E671D007662B4 /* Products */;
 			projectDirPath = "";
@@ -494,6 +500,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E1C8177D2E55152200DD75E9 /* XCRemoteSwiftPackageReference "ollama-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/mattt/ollama-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.8.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E1C817822E55163B00DD75E9 /* Ollama */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E1C8177D2E55152200DD75E9 /* XCRemoteSwiftPackageReference "ollama-swift" */;
+			productName = Ollama;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E103C7612E4E671D007662B4 /* Project object */;
 }

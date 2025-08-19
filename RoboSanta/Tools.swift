@@ -37,6 +37,20 @@ func getAPIKey(_ name: String) -> String? {
     return nil
 }
 
+func fixQuiz(_ answer: Answer) -> (String, String, String, String) {
+    let q = answer.value("question")
+    let a1 = answer.value("answer1")
+    var lines = a1.split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { $0 != "" }
+    if lines.count == 3 {
+        print("Fixing quiz answer")
+        lines = lines.map { String($0.replacing(/^[ABC]: ]/, with: "")) }
+        return (q, lines[0], lines[1], lines[2])
+    }
+    let a2 = answer.value("answer2")
+    let a3 = answer.value("answer3")
+    return (q, a1, a2, a3)
+}
+
 func exactTime() -> String { Date().formatted(date: .omitted, time: .shortened) }
 
 func fuzzyEnglishTime() -> String {
