@@ -51,7 +51,7 @@ struct ElevenLabs: Speak {
         let cleaned = text.removingEmojis().trimmingCharacters(in: .whitespacesAndNewlines)
         print("\(label): \(cleaned)")
         do {
-            let url = "https://api.elevenlabs.io/v1/text-to-speech/\(voiceID)?output_format=\(outputFormat)&optimize_streaming_latency=4"
+            let url = "https://api-global-preview.elevenlabs.io/v1/text-to-speech/\(voiceID)?output_format=\(outputFormat)&optimize_streaming_latency=4"
             var req = URLRequest(url: URL(string: url)!)
             req.httpMethod = "POST"
             req.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
