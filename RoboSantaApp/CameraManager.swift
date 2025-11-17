@@ -233,9 +233,9 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         let faceReq = VNDetectFaceRectanglesRequest()
         faceReq.revision = VNDetectFaceRectanglesRequest.currentRevision
 
-        // Camera is rotated 90° counter-clockwise (portrait), so use .right orientation
-        // .right means the image top is on the right side (90° CCW rotation)
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
+        // Camera is rotated 90° counter-clockwise (portrait), so use .left orientation
+        // .left means the image is rotated 90° CCW from upright (top is on the left edge)
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .left, options: [:])
 
         visionQueue.async {
             defer { self.visionBusy = false }
