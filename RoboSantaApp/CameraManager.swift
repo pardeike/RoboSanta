@@ -111,10 +111,17 @@ final class CameraManager: NSObject, ObservableObject {
         hostLayer.addSublayer(previewLayer)
 
         // Rotate preview video 90 degrees clockwise to correct for portrait camera orientation
+        print("DEBUG: previewLayer.connection = \(String(describing: previewLayer.connection))")
         if let conn = previewLayer.connection {
+            print("DEBUG: Connection exists, isVideoRotationAngleSupported(90) = \(conn.isVideoRotationAngleSupported(90))")
             if conn.isVideoRotationAngleSupported(90) {
                 conn.videoRotationAngle = 90
+                print("DEBUG: Set videoRotationAngle to 90, current value = \(conn.videoRotationAngle)")
+            } else {
+                print("DEBUG: 90 degree rotation not supported")
             }
+        } else {
+            print("DEBUG: previewLayer.connection is nil!")
         }
 
         overlayLayer.frame = hostLayer.bounds
