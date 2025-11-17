@@ -2,7 +2,7 @@ import Foundation
 import FoundationModels
 
 @MainActor
-struct OpenAI: Think {
+struct Koala: Think {
     let modelName: String
     let baseURL: String
     let apiKey: String
@@ -24,7 +24,7 @@ struct OpenAI: Think {
             return try await callJSONSchema(system: system, user: user,
                                             schema: schema, options: options)
         } catch {
-            // 2) Fallback to function-calling tools (widely supported by OpenAI-compatible servers)
+            // fallback to function-calling tools (widely supported by OpenAI-compatible servers)
             return try await callTools(system: system, user: user,
                                        schema: schema, modelNameForTool: model.name,
                                        options: options)
@@ -66,10 +66,10 @@ struct OpenAI: Think {
             let choices = json["choices"] as? [[String: Any]],
             let message = choices.first?["message"] as? [String: Any],
             let content = message["content"] as? String
-        else { throw OpenAIError.invalidResponseFormat }
+        else { throw KoalaError.invalidResponseFormat }
 
         let cleaned = stripCodeFences(content)
-        guard let data = cleaned.data(using: .utf8) else { throw OpenAIError.invalidContentEncoding }
+        guard let data = cleaned.data(using: .utf8) else { throw KoalaError.invalidContentEncoding }
         return try JSONDecoder().decode(T.self, from: data)
     }
 
@@ -114,7 +114,7 @@ struct OpenAI: Think {
         guard
             let choices = json["choices"] as? [[String: Any]],
             let message = choices.first?["message"] as? [String: Any]
-        else { throw OpenAIError.invalidResponseFormat }
+        else { throw KoalaError.invalidResponseFormat }
 
         if let toolCalls = message["tool_calls"] as? [[String: Any]],
            let first = toolCalls.first,
@@ -130,7 +130,7 @@ struct OpenAI: Think {
             return try JSONDecoder().decode(T.self, from: data)
         }
 
-        throw OpenAIError.invalidResponseFormat
+        throw KoalaError.invalidResponseFormat
     }
 
     private func buildJSONSchema(from model: Model) -> [String: Any] {
@@ -174,7 +174,7 @@ struct OpenAI: Think {
     }
 
     private func post(path: String, body: [String: Any]) async throws -> [String: Any] {
-        guard let url = URL(string: "\(baseURL)\(path)") else { throw OpenAIError.invalidURL }
+        guard let url = URL(string: "\(baseURL)\(path)") else { throw KoalaError.invalidURL }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -186,17 +186,17 @@ struct OpenAI: Think {
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else {
             let text = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw OpenAIError.apiError((resp as? HTTPURLResponse)?.statusCode ?? -1, text)
+            throw KoalaError.apiError((resp as? HTTPURLResponse)?.statusCode ?? -1, text)
         }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw OpenAIError.invalidResponseFormat
+            throw KoalaError.invalidResponseFormat
         }
         return json
     }
 }
 
 
-enum OpenAIError: Error, LocalizedError {
+enum KoalaError: Error, LocalizedError {
     case invalidURL
     case requestSerializationFailed(Error)
     case apiError(Int, String)
@@ -208,7 +208,7 @@ enum OpenAIError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "Invalid URL for OpenAI API"
+            return "Invalid URL for API"
         case .requestSerializationFailed(let error):
             return "Failed to serialize request: \(error.localizedDescription)"
         case .apiError(let code, let message):

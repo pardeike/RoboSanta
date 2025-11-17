@@ -14,25 +14,29 @@ let peppTalkSchema = Model(
     ]
 )
 
-let passByAndGreetSchema = Model(
+var passByAndGreetSchema = Model(
     name: "PassbyAndGreet",
-    description: "Your scene: Santa tries to start a quick chat.",
+    description: "Snabb corridor‑hälsning.",
     properties: [
         Property(
             name: "helloPhrase",
-            description: helloPhrase
+            description: "Direkt, kollegial öppning.",
+            minLength: 3, maxLength: 50, disallowQuestion: true
         ),
         Property(
             name: "conversationPhrase",
-            description: "A phrase to say once the person stopped and got closer."
+            description: "En enda mening; smyg in temat subtilt.",
+            minLength: 5, maxLength: 70
         ),
         Property(
             name: "goodbyePhrase",
-            description: goodbyePhrase
+            description: "Rappt avslut utan artighetsutfyllnad.",
+            minLength: 3, maxLength: 55, disallowQuestion: true
         ),
     ]
 )
 
+struct QuizOut: Decodable { let helloPhrase, question, answer1, answer2, answer3, correct_answer, goodbyePhrase: String }
 let quizSchema = Model(
     name: "Quiz",
     description: "Your scene: Santa gives a very short, funny quiz with three choices. Put each answer in its own field. Do not add A/B/C to the answers.",

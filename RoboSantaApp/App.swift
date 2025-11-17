@@ -1,6 +1,7 @@
 import FoundationModels
 import AVFoundation
 import SwiftUI
+import Ollama
 
 @available(macOS 11.0, *)
 struct MinimalApp: App {
@@ -18,52 +19,102 @@ struct MinimalApp: App {
 @main
 struct EntryPoint {
     
-    static let prompt
-        = "You are a genius Swedish copywriter. You write exceptional good and unconventional dialog. You create incredible brief, positive and sometimes lightly cynical dialog. You avoid clichés or stereotypes and get right to the point. Your task is to write things to say by a Swedish Santa Claus standing in a corridor of a large Swedish government organisation (its a diverse IT department) and your scene is when Santa meets a passing office worker. Funny as you are you made a bet that you can smuggle in something about [topic] into your writing without anybody noticing. Output must be in Swedish only and contain just the phrases. Here is your scene:"
+    static let baseSystem = """
+Du är en svensk copywriter. Skriv kort och oväntat, lite roligt.
+Undvik klichéer/stereotyper. En rad per fält. Ok att säga "ho ho ho".
+Skriv bara på Svenska.
+Du talar till exakt en person rakt framför dig.
+Använd "du/din/ditt".
+Svara endast med JSON som matchar schemat.
+"""
+    
+    static let passByTemplate = PromptTemplate(
+        system: baseSystem,
+        scene: "Tomten försöker starta ett snabbt samtal i korridoren."
+    )
+
+    static let peppTemplate = PromptTemplate(
+        system: baseSystem,
+        scene: "Tomten lyfter stämningen på ett personligt sätt."
+    )
+
+    static let quizTemplate = PromptTemplate(
+        system: baseSystem,
+        scene: "Tomten ställer en ultrakort fråga med tre svarsalternativ."
+    )
+
+    static let jokeTemplate = PromptTemplate(
+        system: baseSystem,
+        scene: "Tomten antyder en smakfull hemlighet och ger en stilren komplimang."
+    )
     
     private static func backgroundLoop() async {
-        let thinker: Think = Ollama(modelName: "qwen3:14b") // AppleIntelligence() Ollama() OpenAI()
+        let thinker: Think = Koala()
+        // let thinker: Think = OllamaThink(modelName: "qwen2.5:7b-instruct")
+        // let thinker: Think = AppleIntelligence()
+        let opts = GenerationOptions(temperature: 0.9, topP: 0.92, topK: 60, repeatPenalty: 1.1)
         let speaker: Speak = RoboSantaSpeaker() // ElevenLabs()
         while !Task.isCancelled {
             let randomTopicAction = randomTopicActions.randomElement()!
             let randomTopic = randomTopics.randomElement()!
             switch Int.random(in: 0...3) {
                 case 0:
-                    if let result = await thinker.generateText(prompt, randomTopicAction, randomTopic, peppTalkSchema) {
-                        await speaker.say("Happyness", result.value("happyPhrase"))
+                    print("Pepp Talk (\(randomTopic)):")
+                    struct PeppOut: Decodable { let happyPhrase: String }
+                    do {
+                        let r: PeppOut = try await thinker.generate(template: peppTemplate, topicAction: randomTopicAction, topic: randomTopic, model: peppTalkSchema, options: opts)
+                        await speaker.say("Happyness", r.happyPhrase)
+                    } catch {
+                        print(error)
                     }
+                
                 case 1:
-                    if let result = await thinker.generateText(prompt, randomTopicAction, randomTopic, passByAndGreetSchema) {
-                        await speaker.say("Hello", result.value("helloPhrase"))
-                        await speaker.say("Conversation", result.value("conversationPhrase"))
-                        await speaker.say("Goodbye", result.value("goodbyePhrase"))
+                    print("Greeting (\(randomTopic)):")
+                    struct GreetOut: Decodable { let helloPhrase, conversationPhrase, goodbyePhrase: String }
+                    do {
+                        let r: GreetOut = try await thinker.generate(template: passByTemplate, topicAction: randomTopicAction, topic: randomTopic, model: passByAndGreetSchema, options: opts)
+                        await speaker.say("Hello", r.helloPhrase)
+                        await speaker.say("Conversation", r.conversationPhrase)
+                        await speaker.say("Goodbye", r.goodbyePhrase)
+                    } catch {
+                        print(error)
                     }
+
                 case 2:
+                    print("Quiz (\(randomTopic)):")
                     for _ in 1...3 {
-                        if let result = await thinker.generateText(prompt, randomTopicAction, randomTopic, quizSchema) {
-                            let (q, a1, a2, a3) = fixQuiz(result)
-                            if q == "" || a1 == a2 || a2 == a3 || a1 == a3 { continue }
-                            await speaker.say("Hello", result.value("helloPhrase"))
+                        do {
+                            let r: QuizOut = try await thinker.generate(template: quizTemplate, topicAction: randomTopicAction, topic: randomTopic, model: quizSchema, options: opts)
+                            let (q, a1, a2, a3) = fixQuiz(r) // your existing helper
+                            if q.isEmpty || Set([a1,a2,a3]).count < 3 { continue }
+                            await speaker.say("Hello", r.helloPhrase)
                             await speaker.say("Quiz", q)
                             await speaker.say("Answer 1", "A: " + a1)
                             await speaker.say("Answer 2", "B: " + a2)
                             await speaker.say("Answer 3", "C: " + a3)
-                            try? await Task.sleep(nanoseconds: 1_000_000_000)
-                            await speaker.say("Correct Answer", result.value("correct_answer"))
-                            await speaker.say("Goodbye", result.value("goodbyePhrase"))
+                            try await Task.sleep(nanoseconds: 1_000_000_000)
+                            await speaker.say("Correct Answer", r.correct_answer)
+                            await speaker.say("Goodbye", r.goodbyePhrase)
                             break
+                        } catch {
+                            print(error)
                         }
                     }
-                    break
+
                 case 3:
-                    if let result = await thinker.generateText(prompt, randomTopicAction, randomTopic, jokeSchema) {
-                        await speaker.say("Hello", result.value("helloPhrase"))
-                        await speaker.say("Secret", result.value("secret"))
-                        await speaker.say("Compliment", result.value("compliment"))
-                        await speaker.say("Goodbye", result.value("goodbyePhrase"))
+                    print("Joke (\(randomTopic)):")
+                    struct JokeOut: Decodable { let helloPhrase, secret, compliment, goodbyePhrase: String }
+                    do {
+                        let r: JokeOut = try await thinker.generate(template: jokeTemplate, topicAction: randomTopicAction, topic: randomTopic, model: jokeSchema, options: opts)
+                        await speaker.say("Hello", r.helloPhrase)
+                        await speaker.say("Secret", r.secret)
+                        await speaker.say("Compliment", r.compliment)
+                        await speaker.say("Goodbye", r.goodbyePhrase)
+                    } catch {
+                        print(error)
                     }
-                default:
-                    break
+
+                default: break
             }
             print("")
             try? await Task.sleep(nanoseconds: 1_000_000_000)
@@ -123,6 +174,7 @@ while true {
 
 functions.engageMotor(false)
 */
+
 
 
 

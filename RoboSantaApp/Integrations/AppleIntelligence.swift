@@ -3,37 +3,22 @@ import Foundation
 
 @MainActor
 struct AppleIntelligence: Think {
-    func generateText(_ prompt: String, _ topicAction: String, _ topic: String, _ model: Model) async -> Answer? {
+    func generate<T: Decodable>(template: PromptTemplate, topicAction: String, topic: String, model: Model, options: GenerationOptions) async throws -> T {
+        guard SystemLanguageModel.default.isAvailable else {
+            fatalError("No system model available")
+        }
         while true {
             do {
-                let session = LanguageModelSession(instructions: "The current time is <TIME>. You are best at coming up with short Swedish phrases that are funny and have a good punchline.".replacingOccurrences(of: "<TIME>", with: fuzzyEnglishTime()))
-                let schema = try model.dynamicGenerationSchema()
-                let content = try await session.respond(to: prompt.makeRandom(topicAction, topic), schema: schema, includeSchemaInPrompt: true).content
-                var bad = ""
-                for field in model.properties.map({ $0.name }) {
-                    let value = try? content.value(String.self, forProperty: field)
-                    if let value {
-                        if value.isEmpty {
-                            bad = "field empty"
-                        } else {
-                            if value.contains(/[\n%&‰]/) {
-                                bad = "bad characters"
-                            }
-                        }
-                    } else {
-                        bad = "field missing"
-                    }
-                }
-                if bad != "" {
-                    print("Retrying due to \(bad)")
-                    continue
-                }
-                return Answer(model: model, content: content)
+                let (system, user) = template.render(topicAction: topicAction, topic: topic)
+                let schema: GenerationSchema = try model.dynamicGenerationSchema()
+                let session = LanguageModelSession(instructions: system)
+                let response = try await session.respond(to: user, schema: schema, options: FoundationModels.GenerationOptions(temperature: options.temperature)).content
+                return try JSONDecoder().decode(T.self, from: response.generatedContent.jsonString.data(using: .utf8) ?? Data())
             } catch {
-                if error is LanguageModelSession.GenerationError {
-                    print("Retrying due to error")
-                    continue
-                }
+                //if error is LanguageModelSession.GenerationError {
+                //    print("Retrying due to error")
+                //    continue
+                //}
                 print("Error: \(error)")
             }
         }

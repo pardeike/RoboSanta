@@ -2,7 +2,13 @@ import FoundationModels
 import AVFoundation
 
 protocol Think {
-    func generateText(_ prompt: String, _ topicAction: String, _ topic: String, _ model: Model) async -> Answer?
+    func generate<T: Decodable>(
+        template: PromptTemplate,
+        topicAction: String,
+        topic: String,
+        model: Model,
+        options: GenerationOptions
+    ) async throws -> T
 }
 
 protocol Speak {
@@ -37,17 +43,17 @@ func getAPIKey(_ name: String) -> String? {
     return nil
 }
 
-func fixQuiz(_ answer: Answer) -> (String, String, String, String) {
-    let q = answer.value("question")
-    let a1 = answer.value("answer1")
+func fixQuiz(_ quiz: QuizOut) -> (String, String, String, String) {
+    let q = quiz.question
+    let a1 = quiz.answer1
     var lines = a1.split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }.filter { $0 != "" }
     if lines.count == 3 {
         print("Fixing quiz answer")
         lines = lines.map { String($0.replacing(/^[ABC]: ]/, with: "")) }
         return (q, lines[0], lines[1], lines[2])
     }
-    let a2 = answer.value("answer2")
-    let a3 = answer.value("answer3")
+    let a2 = quiz.answer2
+    let a3 = quiz.answer3
     return (q, a1, a2, a3)
 }
 
