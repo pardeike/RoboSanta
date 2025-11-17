@@ -6,82 +6,41 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		0640E8BE2EB8FAF8005F6FB3 /* Ollama in Frameworks */ = {isa = PBXBuildFile; productRef = 0640E8BD2EB8FAF8005F6FB3 /* Ollama */; };
-		E11466DF2EA8E7ED00298E72 /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E130C9742E4EA505009DCC95 /* FoundationModels.framework */; };
-		E11466E22EA8E81B00298E72 /* Phidget22.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E103C8B72E4E67CE007662B4 /* Phidget22.framework */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
-		E103C8B62E4E67CE007662B4 /* Phidget22Extra.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Phidget22Extra.framework; path = ../../../../Library/Frameworks/Phidget22Extra.framework; sourceTree = "<group>"; };
-		E103C8B72E4E67CE007662B4 /* Phidget22.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Phidget22.framework; path = ../../../../Library/Frameworks/Phidget22.framework; sourceTree = "<group>"; };
-		E11466D42EA8E7B200298E72 /* RoboSantaApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RoboSantaApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		E130C9742E4EA505009DCC95 /* FoundationModels.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FoundationModels.framework; path = System/Library/Frameworks/FoundationModels.framework; sourceTree = SDKROOT; };
-		E174BC322E51349700BB3125 /* RoboSantaSpeaker.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = RoboSantaSpeaker.xcodeproj; sourceTree = "<group>"; };
-		E1ACC93E2E51D25700368AA9 /* ExtensionFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ExtensionFoundation.framework; path = System/Library/Frameworks/ExtensionFoundation.framework; sourceTree = SDKROOT; };
-		E1ACC9402E51D26400368AA9 /* ModelIO.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ModelIO.framework; path = System/Library/Frameworks/ModelIO.framework; sourceTree = SDKROOT; };
+		E11465C92EA8E53800298E72 /* RoboSantaVision.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RoboSantaVision.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		E11466D52EA8E7B200298E72 /* RoboSantaApp */ = {
+		E11465CB2EA8E53800298E72 /* RoboSantaVision */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = RoboSantaApp;
-			sourceTree = "<group>";
-		};
-		E174BE322E51361B00BB3125 /* RoboSantaSpeaker */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = RoboSantaSpeaker;
+			path = RoboSantaVision;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		E11466D12EA8E7B200298E72 /* Frameworks */ = {
+		E11465C62EA8E53800298E72 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0640E8BE2EB8FAF8005F6FB3 /* Ollama in Frameworks */,
-				E11466E22EA8E81B00298E72 /* Phidget22.framework in Frameworks */,
-				E11466DF2EA8E7ED00298E72 /* FoundationModels.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		E103C7602E4E671D007662B4 = {
+		E11465C02EA8E53800298E72 = {
 			isa = PBXGroup;
 			children = (
-				E174BE322E51361B00BB3125 /* RoboSantaSpeaker */,
-				E11466D52EA8E7B200298E72 /* RoboSantaApp */,
-				E103C8B52E4E67CE007662B4 /* Frameworks */,
-				E103C76A2E4E671D007662B4 /* Products */,
+				E11465CB2EA8E53800298E72 /* RoboSantaVision */,
+				E11465CA2EA8E53800298E72 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		E103C76A2E4E671D007662B4 /* Products */ = {
+		E11465CA2EA8E53800298E72 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				E11466D42EA8E7B200298E72 /* RoboSantaApp.app */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
-		E103C8B52E4E67CE007662B4 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				E1ACC9402E51D26400368AA9 /* ModelIO.framework */,
-				E1ACC93E2E51D25700368AA9 /* ExtensionFoundation.framework */,
-				E130C9742E4EA505009DCC95 /* FoundationModels.framework */,
-				E103C8B72E4E67CE007662B4 /* Phidget22.framework */,
-				E103C8B62E4E67CE007662B4 /* Phidget22Extra.framework */,
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		E174BC332E51349700BB3125 /* Products */ = {
-			isa = PBXGroup;
-			children = (
+				E11465C92EA8E53800298E72 /* RoboSantaVision.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -89,74 +48,64 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		E11466D32EA8E7B200298E72 /* RoboSantaApp */ = {
+		E11465C82EA8E53800298E72 /* RoboSantaVision */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = E11466DC2EA8E7B400298E72 /* Build configuration list for PBXNativeTarget "RoboSantaApp" */;
+			buildConfigurationList = E11465D42EA8E53900298E72 /* Build configuration list for PBXNativeTarget "RoboSantaVision" */;
 			buildPhases = (
-				E11466D02EA8E7B200298E72 /* Sources */,
-				E11466D12EA8E7B200298E72 /* Frameworks */,
-				E11466D22EA8E7B200298E72 /* Resources */,
+				E11465C52EA8E53800298E72 /* Sources */,
+				E11465C62EA8E53800298E72 /* Frameworks */,
+				E11465C72EA8E53800298E72 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				E11466D52EA8E7B200298E72 /* RoboSantaApp */,
+				E11465CB2EA8E53800298E72 /* RoboSantaVision */,
 			);
-			name = RoboSantaApp;
+			name = RoboSantaVision;
 			packageProductDependencies = (
-				0640E8BD2EB8FAF8005F6FB3 /* Ollama */,
 			);
-			productName = RoboSantaApp;
-			productReference = E11466D42EA8E7B200298E72 /* RoboSantaApp.app */;
+			productName = RoboSantaVision;
+			productReference = E11465C92EA8E53800298E72 /* RoboSantaVision.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		E103C7612E4E671D007662B4 /* Project object */ = {
+		E11465C12EA8E53800298E72 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
-					E11466D32EA8E7B200298E72 = {
+					E11465C82EA8E53800298E72 = {
 						CreatedOnToolsVersion = 26.0;
 					};
 				};
 			};
-			buildConfigurationList = E103C7642E4E671D007662B4 /* Build configuration list for PBXProject "RoboSanta" */;
+			buildConfigurationList = E11465C42EA8E53800298E72 /* Build configuration list for PBXProject "RoboSantaVision" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
-			mainGroup = E103C7602E4E671D007662B4;
+			mainGroup = E11465C02EA8E53800298E72;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-				0640E8BC2EB8FAF8005F6FB3 /* XCLocalSwiftPackageReference "../ollama-swift" */,
-			);
 			preferredProjectObjectVersion = 77;
-			productRefGroup = E103C76A2E4E671D007662B4 /* Products */;
+			productRefGroup = E11465CA2EA8E53800298E72 /* Products */;
 			projectDirPath = "";
-			projectReferences = (
-				{
-					ProductGroup = E174BC332E51349700BB3125 /* Products */;
-					ProjectRef = E174BC322E51349700BB3125 /* RoboSantaSpeaker.xcodeproj */;
-				},
-			);
 			projectRoot = "";
 			targets = (
-				E11466D32EA8E7B200298E72 /* RoboSantaApp */,
+				E11465C82EA8E53800298E72 /* RoboSantaVision */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		E11466D22EA8E7B200298E72 /* Resources */ = {
+		E11465C72EA8E53800298E72 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -166,7 +115,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		E11466D02EA8E7B200298E72 /* Sources */ = {
+		E11465C52EA8E53800298E72 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -176,7 +125,7 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		E103C76E2E4E671D007662B4 /* Debug */ = {
+		E11465D22EA8E53900298E72 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -211,6 +160,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = W65292CD8T;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -239,7 +189,7 @@
 			};
 			name = Debug;
 		};
-		E103C76F2E4E671D007662B4 /* Release */ = {
+		E11465D32EA8E53900298E72 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -274,6 +224,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = W65292CD8T;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -294,101 +245,65 @@
 			};
 			name = Release;
 		};
-		E11466DD2EA8E7B400298E72 /* Debug */ = {
+		E11465D52EA8E53900298E72 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = U69L99G3AF;
-				ENABLE_APP_SANDBOX = NO;
-				ENABLE_HARDENED_RUNTIME = NO;
+				DEVELOPMENT_TEAM = W65292CD8T;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
-				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
-				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(LOCAL_LIBRARY_DIR)/Frameworks",
-				);
+				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Look around";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = net.pardeike.lab.RoboSantaApp;
+				PRODUCT_BUNDLE_IDENTIFIER = net.pardeike.lab.RoboSantaVision;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
-				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
-				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
-				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
-				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
-				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
-				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "RoboSantaApp/RoboSanta-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
 		};
-		E11466DE2EA8E7B400298E72 /* Release */ = {
+		E11465D62EA8E53900298E72 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = U69L99G3AF;
-				ENABLE_APP_SANDBOX = NO;
-				ENABLE_HARDENED_RUNTIME = NO;
+				DEVELOPMENT_TEAM = W65292CD8T;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
-				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
-				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
-				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
-				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(LOCAL_LIBRARY_DIR)/Frameworks",
-				);
+				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Look around";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = net.pardeike.lab.RoboSantaApp;
+				PRODUCT_BUNDLE_IDENTIFIER = net.pardeike.lab.RoboSantaVision;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
-				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
-				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
-				RUNTIME_EXCEPTION_ALLOW_UNSIGNED_EXECUTABLE_MEMORY = NO;
-				RUNTIME_EXCEPTION_DEBUGGING_TOOL = NO;
-				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
-				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "RoboSantaApp/RoboSanta-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -397,39 +312,25 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		E103C7642E4E671D007662B4 /* Build configuration list for PBXProject "RoboSanta" */ = {
+		E11465C42EA8E53800298E72 /* Build configuration list for PBXProject "RoboSantaVision" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E103C76E2E4E671D007662B4 /* Debug */,
-				E103C76F2E4E671D007662B4 /* Release */,
+				E11465D22EA8E53900298E72 /* Debug */,
+				E11465D32EA8E53900298E72 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E11466DC2EA8E7B400298E72 /* Build configuration list for PBXNativeTarget "RoboSantaApp" */ = {
+		E11465D42EA8E53900298E72 /* Build configuration list for PBXNativeTarget "RoboSantaVision" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E11466DD2EA8E7B400298E72 /* Debug */,
-				E11466DE2EA8E7B400298E72 /* Release */,
+				E11465D52EA8E53900298E72 /* Debug */,
+				E11465D62EA8E53900298E72 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		0640E8BC2EB8FAF8005F6FB3 /* XCLocalSwiftPackageReference "../ollama-swift" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = "../ollama-swift";
-		};
-/* End XCLocalSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		0640E8BD2EB8FAF8005F6FB3 /* Ollama */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = Ollama;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = E103C7612E4E671D007662B4 /* Project object */;
+	rootObject = E11465C12EA8E53800298E72 /* Project object */;
 }
