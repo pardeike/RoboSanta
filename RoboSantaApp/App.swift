@@ -93,7 +93,7 @@ Svara endast med JSON som matchar schemat.
                             await speaker.say("Answer 2", "B: " + a2)
                             await speaker.say("Answer 3", "C: " + a3)
                             try await Task.sleep(nanoseconds: 1_000_000_000)
-                            await speaker.say("Correct Answer", r.correct_answer)
+                            await speaker.say("Correct Answer", "Svaret är: \(r.correct_answer)")
                             await speaker.say("Goodbye", r.goodbyePhrase)
                             break
                         } catch {
