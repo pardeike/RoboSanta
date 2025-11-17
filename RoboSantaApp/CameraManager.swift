@@ -89,6 +89,10 @@ final class CameraManager: NSObject, ObservableObject {
 
         if let conn = videoOutput.connection(with: .video) {
             conn.isVideoMirrored = false
+            // Rotate video 90 degrees clockwise to correct for portrait camera orientation
+            if conn.isVideoRotationAngleSupported(90) {
+                conn.videoRotationAngle = 90
+            }
         }
 
         session.commitConfiguration()
@@ -221,7 +225,9 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         let faceReq = VNDetectFaceRectanglesRequest()
         faceReq.revision = VNDetectFaceRectanglesRequest.currentRevision
 
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
+        // Camera is rotated 90° counter-clockwise (portrait), so use .right orientation
+        // .right means the image top is on the right side (90° CCW rotation)
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
 
         visionQueue.async {
             defer { self.visionBusy = false }
