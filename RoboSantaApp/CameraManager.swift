@@ -89,10 +89,6 @@ final class CameraManager: NSObject, ObservableObject {
 
         if let conn = videoOutput.connection(with: .video) {
             conn.isVideoMirrored = false
-            // Rotate video 90 degrees clockwise to correct for portrait camera orientation
-            if conn.isVideoRotationAngleSupported(90) {
-                conn.videoRotationAngle = 90
-            }
         }
 
         session.commitConfiguration()
@@ -113,6 +109,13 @@ final class CameraManager: NSObject, ObservableObject {
         previewLayer.frame = hostLayer.bounds
         previewLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         hostLayer.addSublayer(previewLayer)
+
+        // Rotate preview video 90 degrees clockwise to correct for portrait camera orientation
+        if let conn = previewLayer.connection {
+            if conn.isVideoRotationAngleSupported(90) {
+                conn.videoRotationAngle = 90
+            }
+        }
 
         overlayLayer.frame = hostLayer.bounds
         overlayLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
@@ -207,15 +210,7 @@ final class CameraManager: NSObject, ObservableObject {
     }
 
     private func toPreviewRect(_ vnRect: CGRect) -> CGRect {
-        // Vision uses bottom-left origin (y=0 at bottom), AVFoundation uses top-left origin (y=0 at top)
-        // Convert Vision normalized coordinates to AVFoundation metadata coordinate space
-        let avRect = CGRect(x: vnRect.minX,
-                           y: 1.0 - vnRect.maxY,
-                           width: vnRect.width,
-                           height: vnRect.height)
-        // Now convert from AVFoundation metadata coordinates to preview layer coordinates
-        // This automatically accounts for video rotation, mirroring, and aspect ratio
-        return previewLayer.layerRectConverted(fromMetadataOutputRect: avRect)
+        return previewLayer.layerRectConverted(fromMetadataOutputRect: vnRect)
     }
 }
 
@@ -233,9 +228,7 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         let faceReq = VNDetectFaceRectanglesRequest()
         faceReq.revision = VNDetectFaceRectanglesRequest.currentRevision
 
-        // Camera is rotated 90° counter-clockwise (portrait), so use .left orientation
-        // .left means the image is rotated 90° CCW from upright (top is on the left edge)
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .left, options: [:])
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
 
         visionQueue.async {
             defer { self.visionBusy = false }
