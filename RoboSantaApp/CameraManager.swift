@@ -207,7 +207,15 @@ final class CameraManager: NSObject, ObservableObject {
     }
 
     private func toPreviewRect(_ vnRect: CGRect) -> CGRect {
-        return previewLayer.layerRectConverted(fromMetadataOutputRect: vnRect)
+        // Vision uses bottom-left origin (y=0 at bottom), AVFoundation uses top-left origin (y=0 at top)
+        // Convert Vision normalized coordinates to AVFoundation metadata coordinate space
+        let avRect = CGRect(x: vnRect.minX,
+                           y: 1.0 - vnRect.maxY,
+                           width: vnRect.width,
+                           height: vnRect.height)
+        // Now convert from AVFoundation metadata coordinates to preview layer coordinates
+        // This automatically accounts for video rotation, mirroring, and aspect ratio
+        return previewLayer.layerRectConverted(fromMetadataOutputRect: avRect)
     }
 }
 
