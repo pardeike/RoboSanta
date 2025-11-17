@@ -7,26 +7,23 @@ import Combine
 
 final class CameraManager: NSObject, ObservableObject {
 
-    // Public state
     @Published var devices: [AVCaptureDevice] = []
     @Published var selectedDeviceID: String?
 
-    // Private capture members
     private let session = AVCaptureSession()
     private var input: AVCaptureDeviceInput?
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sessionQueue = DispatchQueue(label: "cam.session")
     private let videoQueue   = DispatchQueue(label: "cam.video")
 
-    // Layers
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let overlayLayer = CALayer()
 
-    // Vision
     private var visionBusy = false
     private let visionQueue = DispatchQueue(label: "cam.vision")
 
     // MARK: Lifecycle
+    
     func start() {
         discoverDevices()
         configureSession()
@@ -42,6 +39,7 @@ final class CameraManager: NSObject, ObservableObject {
     }
 
     // MARK: Device discovery and selection
+    
     private func discoverDevices() {
         let discovery = AVCaptureDevice.DiscoverySession(
             deviceTypes: [.external, .builtInWideAngleCamera],
@@ -71,6 +69,7 @@ final class CameraManager: NSObject, ObservableObject {
     }
 
     // MARK: Session and output
+    
     private func configureSession() {
         session.beginConfiguration()
         session.sessionPreset = .high
@@ -90,17 +89,18 @@ final class CameraManager: NSObject, ObservableObject {
 
         if let conn = videoOutput.connection(with: .video) {
             conn.isVideoMirrored = false
-            // macOS orientation is fixed; Vision uses .up by default.
         }
 
         session.commitConfiguration()
 
-        // Default runtime tuning
-        //setFPS(30)
-        //setLowLightBoost(true)
+        // some optional runtime tuning
+        //
+        // setFPS(30)
+        // setLowLightBoost(true)
     }
 
     // MARK: Preview + overlay attach
+    
     func attach(to hostLayer: CALayer) {
         previewLayer.session = session
         previewLayer.videoGravity = .resizeAspect
@@ -116,6 +116,7 @@ final class CameraManager: NSObject, ObservableObject {
         hostLayer.addSublayer(overlayLayer)
     }
 
+    // some optional tweaking methods
     /*
     func setExposureTargetBias(_ bias: Float) {
         guard let dev = input?.device else { return }
@@ -152,9 +153,7 @@ final class CameraManager: NSObject, ObservableObject {
             } catch { print("FPS set error: \(error)") }
         }
     }
-    */
 
-    // Optional: true manual exposure if your UVC cam supports it.
     func setCustomExposure(duration: CMTime, iso: Float) {
         guard let dev = input?.device, dev.isExposureModeSupported(.custom) else { return }
         sessionQueue.async {
@@ -165,8 +164,10 @@ final class CameraManager: NSObject, ObservableObject {
             } catch { print("Custom exposure error: \(error)") }
         }
     }
+    */
 
     // MARK: Drawing overlay
+    
     private func showDetections(faces: [(rect: CGRect, yawDeg: Double?)]) {
         DispatchQueue.main.async {
             self.overlayLayer.sublayers?.forEach { $0.removeFromSuperlayer() }
@@ -202,21 +203,14 @@ final class CameraManager: NSObject, ObservableObject {
     }
 
     private func toPreviewRect(_ vnRect: CGRect) -> CGRect {
-        // Vision: normalized, origin at bottom-left. Metadata rect: origin top-left.
-        let flipped = CGRect(x: vnRect.origin.x,
-                             y: vnRect.origin.y, //1.0 - vnRect.origin.y - vnRect.height,
-                             width: vnRect.width,
-                             height: vnRect.height)
-        return previewLayer.layerRectConverted(fromMetadataOutputRect: flipped)
+        return previewLayer.layerRectConverted(fromMetadataOutputRect: vnRect)
     }
 }
 
 // MARK: - Capture delegate + Vision
+
 extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
-    func captureOutput(_ output: AVCaptureOutput,
-                       didOutput sampleBuffer: CMSampleBuffer,
-                       from connection: AVCaptureConnection)
-    {
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard !visionBusy,
               let _ = input?.device,
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)

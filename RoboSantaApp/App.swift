@@ -32,60 +32,47 @@ struct EntryPoint {
     
     private static func backgroundLoop() async {
         let thinker: Think = Ollama(modelName: "gemma3n") // AppleIntelligence() Ollama() OpenAI()
-        let speaker: Speak = ElevenLabs() // RoboSantaSpeaker()
+        let speaker: Speak = RoboSantaSpeaker() // ElevenLabs()
         while !Task.isCancelled {
-            if let answer = await thinker.generateText(passByAndGreetPrompt, passByAndGreetSchema) {
-                await speaker.say("Greeting", answer.value("firstPhrase"))
-                switch Int.random(in: 1...3) {
-                case 1:
+            switch Int.random(in: 1...3) {
+            case 1:
+                if let answer = await thinker.generateText(passByAndGreetPrompt, passByAndGreetSchema) {
+                    await speaker.say("Greeting", answer.value("firstPhrase"))
                     await speaker.say("Followup", answer.value("secondPhrase"))
                     await speaker.say("Ending", answer.value("thirdPhrase"))
-                case 2:
-                    for _ in 1...3 {
-                        if let quiz = await thinker.generateText(quizPrompt, quizSchema) {
-                            let (q, a1, a2, a3) = fixQuiz(quiz)
-                            if q == "" || a1 == a2 || a2 == a3 || a1 == a3 { continue }
-                            await speaker.say("Quiz", q)
-                            await speaker.say("Answer 1", "A: " + a1)
-                            await speaker.say("Answer 2", "B: " + a2)
-                            await speaker.say("Answer 3", "C: " + a3)
-                            sleep(1)
-                            await speaker.say("Ending", quiz.value("ending"))
-                            break
-                        }
+                }
+            case 2:
+                for _ in 1...3 {
+                    if let quiz = await thinker.generateText(quizPrompt, quizSchema) {
+                        let (q, a1, a2, a3) = fixQuiz(quiz)
+                        if q == "" || a1 == a2 || a2 == a3 || a1 == a3 { continue }
+                        await speaker.say("Quiz", q)
+                        await speaker.say("Answer 1", "A: " + a1)
+                        await speaker.say("Answer 2", "B: " + a2)
+                        await speaker.say("Answer 3", "C: " + a3)
+                        try? await Task.sleep(nanoseconds: 1_000_000_000)
+                        await speaker.say("Ending", quiz.value("ending"))
+                        break
                     }
-                    break
-                case 3:
-                if let answer = await thinker.generateText(jokePrompt, jokeSchema) {
-                    await speaker.say("Compliment", answer.value("compliment"))
-                    await speaker.say("Buildup", answer.value("buildup"))
-                    await speaker.say("Punchline", answer.value("punchline"))
                 }
-                default:
-                    break
-                }
-                print("")
-                sleep(1)
+                break
+            case 3:
+            if let answer = await thinker.generateText(jokePrompt, jokeSchema) {
+                await speaker.say("Compliment", answer.value("compliment"))
+                await speaker.say("Buildup", answer.value("buildup"))
+                await speaker.say("Punchline", answer.value("punchline"))
             }
+            default:
+                break
+            }
+            print("")
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
-        /*
-         while !Task.isCancelled {
-            if let answer = await thinker.generateText(quizPrompt, quizSchema) {
-                await speaker.say("Question", answer.value("question"))
-                await speaker.say("Answer 1", "A: " + answer.value("answer1"))
-                await speaker.say("Answer 2", "B: " + answer.value("answer2"))
-                await speaker.say("Answer 3", "C: " + answer.value("answer3"))
-                print("")
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-            }
-        }
-        */
     }
     
     static func main() async {
         let loopTask = Task.detached(priority: .background) {
-            //await backgroundLoop()
+            await backgroundLoop()
         }
         MinimalApp.main()
         print("Preparing shutdown")

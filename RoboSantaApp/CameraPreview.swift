@@ -16,7 +16,7 @@ struct CameraPreview: NSViewRepresentable {
 
     func makeNSView(context: Context) -> PreviewHostView {
         let v = PreviewHostView()
-        camera.attach(to: v.rootLayer) // install preview + overlay
+        camera.attach(to: v.rootLayer)
         return v
     }
 
