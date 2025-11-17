@@ -60,7 +60,7 @@ struct OpenAI: Think {
         9.35852
     }
     
-    func generateText(_ prompt: String, _ model: Model) async -> Answer? {
+    func generateText(_ prompt: String, _ topicAction: String, _ topic: String, _ model: Model) async -> Answer? {
         guard let apiKey = getAPIKey("RoboSanta OpenAI API Key"), !apiKey.isEmpty else {
             print("Missing OpenAI API key")
             return nil
@@ -91,11 +91,11 @@ struct OpenAI: Think {
                 model: modelName,
                 input: [
                     Message(role: "system", content: model.description),
-                    Message(role: "user", content: prompt)
+                    Message(role: "user", content: prompt.makeRandom(topicAction, topic))
                 ],
                 text: TextInfo(format: TextFormat(schema: schema))
             ))
-            print("Sending... ", terminator: "")
+            print("OpenAI (\(topic))... ", terminator: "")
             let start = Date().timeIntervalSince1970
             guard let (data, response) = try? await URLSession.shared.data(for: req) else { return nil }
             guard let urlResponse = response as? HTTPURLResponse else { return nil }

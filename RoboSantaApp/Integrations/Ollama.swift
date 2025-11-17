@@ -5,7 +5,7 @@ import FoundationModels
 @MainActor
 struct Ollama: Think {
     
-    var modelName = "gemma3n"
+    var modelName = "gemma3:1b"
     
     struct TextFormat: Encodable {
         let type = "json_schema"
@@ -78,11 +78,7 @@ struct Ollama: Think {
         }
     }
     
-    func generateText(_ prompt: String, _ model: Model) async -> Answer? {
-        guard let apiKey = getAPIKey("RoboSanta OpenAI API Key"), !apiKey.isEmpty else {
-            print("Missing OpenAI API key")
-            return nil
-        }
+    func generateText(_ prompt: String, _ topicAction: String, _ topic: String, _ model: Model) async -> Answer? {
         
         let propertyNames = model.properties.map { JSONValue.string($0.name) }
         var properties: [String: JSONValue] = [:]
@@ -101,13 +97,13 @@ struct Ollama: Think {
         
         do {
             let client = Client(host: URL(string: "http://localhost:11434")!)
-            print("Ollama... ", terminator: "")
+            print("Ollama (\(topic))... ", terminator: "")
             let start = Date().timeIntervalSince1970
             let json = try await client.chat(
                 model: "\(modelName)",
                 messages: [
                     .system(model.description),
-                    .user(prompt)
+                    .user(prompt.makeRandom(topicAction, topic))
                 ],
                 format: convertSchema(schema)
             ).message.content

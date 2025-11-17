@@ -18,52 +18,52 @@ struct MinimalApp: App {
 @main
 struct EntryPoint {
     
-    static let commonSuffix
-        = " Vary each time; mostly positive, sometimes lightly cynical or unexpectedly funny. Avoid clichés or stereotypes. Get right to the point. Nothing too corny."
-    
-    static let passByAndGreetPrompt
-        = "Write in Swedish: Something for Santa Claus to say during December." + commonSuffix
-    
-    static let quizPrompt
-        = "Write in Swedish: Santa Claus giving a quiz." + commonSuffix
-    
-    static let jokePrompt
-        = "Write in Swedish: Santa Claus making a tasteful joke or compliment on the person standing in front of him. Make it interesting!" + commonSuffix
+    static let prompt
+        = "You are a genius Swedish copywriter. You write exceptional good and unconventional dialog. You create incredible brief, positive and sometimes lightly cynical dialog. You avoid clichés or stereotypes and get right to the point. Your task is to write things to say by a Swedish Santa Claus standing in a corridor of a large Swedish government organisation (its a diverse IT department) and your scene is when Santa meets a passing office worker. Funny as you are you made a bet that you can smuggle in something about [topic] into your writing without anybody noticing. Output must be in Swedish only and contain just the phrases. Here is your scene:"
     
     private static func backgroundLoop() async {
-        let thinker: Think = Ollama(modelName: "gemma3n") // AppleIntelligence() Ollama() OpenAI()
+        let thinker: Think = Ollama(modelName: "qwen3:14b") // AppleIntelligence() Ollama() OpenAI()
         let speaker: Speak = RoboSantaSpeaker() // ElevenLabs()
         while !Task.isCancelled {
-            switch Int.random(in: 1...3) {
-            case 1:
-                if let answer = await thinker.generateText(passByAndGreetPrompt, passByAndGreetSchema) {
-                    await speaker.say("Greeting", answer.value("firstPhrase"))
-                    await speaker.say("Followup", answer.value("secondPhrase"))
-                    await speaker.say("Ending", answer.value("thirdPhrase"))
-                }
-            case 2:
-                for _ in 1...3 {
-                    if let quiz = await thinker.generateText(quizPrompt, quizSchema) {
-                        let (q, a1, a2, a3) = fixQuiz(quiz)
-                        if q == "" || a1 == a2 || a2 == a3 || a1 == a3 { continue }
-                        await speaker.say("Quiz", q)
-                        await speaker.say("Answer 1", "A: " + a1)
-                        await speaker.say("Answer 2", "B: " + a2)
-                        await speaker.say("Answer 3", "C: " + a3)
-                        try? await Task.sleep(nanoseconds: 1_000_000_000)
-                        await speaker.say("Ending", quiz.value("ending"))
-                        break
+            let randomTopicAction = randomTopicActions.randomElement()!
+            let randomTopic = randomTopics.randomElement()!
+            switch Int.random(in: 0...0) {
+                case 0:
+                    if let result = await thinker.generateText(prompt, randomTopicAction, randomTopic, peppTalkSchema) {
+                        await speaker.say("Happyness", result.value("happyPhrase"))
                     }
-                }
-                break
-            case 3:
-            if let answer = await thinker.generateText(jokePrompt, jokeSchema) {
-                await speaker.say("Compliment", answer.value("compliment"))
-                await speaker.say("Buildup", answer.value("buildup"))
-                await speaker.say("Punchline", answer.value("punchline"))
-            }
-            default:
-                break
+                case 1:
+                    if let result = await thinker.generateText(prompt, randomTopicAction, randomTopic, passByAndGreetSchema) {
+                        await speaker.say("Hello", result.value("helloPhrase"))
+                        await speaker.say("Conversation", result.value("conversationPhrase"))
+                        await speaker.say("Goodbye", result.value("goodbyePhrase"))
+                    }
+                case 2:
+                    for _ in 1...3 {
+                        if let result = await thinker.generateText(prompt, randomTopicAction, randomTopic, quizSchema) {
+                            let (q, a1, a2, a3) = fixQuiz(result)
+                            if q == "" || a1 == a2 || a2 == a3 || a1 == a3 { continue }
+                            await speaker.say("Hello", result.value("helloPhrase"))
+                            await speaker.say("Quiz", q)
+                            await speaker.say("Answer 1", "A: " + a1)
+                            await speaker.say("Answer 2", "B: " + a2)
+                            await speaker.say("Answer 3", "C: " + a3)
+                            try? await Task.sleep(nanoseconds: 1_000_000_000)
+                            await speaker.say("Correct Answer", result.value("correct_answer"))
+                            await speaker.say("Goodbye", result.value("goodbyePhrase"))
+                            break
+                        }
+                    }
+                    break
+                case 3:
+                    if let result = await thinker.generateText(prompt, randomTopicAction, randomTopic, jokeSchema) {
+                        await speaker.say("Hello", result.value("helloPhrase"))
+                        await speaker.say("Secret", result.value("secret"))
+                        await speaker.say("Compliment", result.value("compliment"))
+                        await speaker.say("Goodbye", result.value("goodbyePhrase"))
+                    }
+                default:
+                    break
             }
             print("")
             try? await Task.sleep(nanoseconds: 1_000_000_000)

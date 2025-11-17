@@ -2,7 +2,7 @@ import FoundationModels
 import AVFoundation
 
 protocol Think {
-    func generateText(_ prompt: String, _ model: Model) async -> Answer?
+    func generateText(_ prompt: String, _ topicAction: String, _ topic: String, _ model: Model) async -> Answer?
 }
 
 protocol Speak {

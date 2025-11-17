@@ -87,12 +87,9 @@ final class CameraManager: NSObject, ObservableObject {
         videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
         if session.canAddOutput(videoOutput) { session.addOutput(videoOutput) }
 
-        if let conn = videoOutput.connection(with: .video) {
-            conn.isVideoMirrored = false
-            // Rotate video 90 degrees clockwise to correct for portrait camera orientation
-            if conn.isVideoRotationAngleSupported(90) {
-                conn.videoRotationAngle = 90
-            }
+        for connection in session.connections {
+            guard connection.isVideoRotationAngleSupported(90) else { continue }
+            connection.videoRotationAngle = 90
         }
 
         session.commitConfiguration()
@@ -207,15 +204,7 @@ final class CameraManager: NSObject, ObservableObject {
     }
 
     private func toPreviewRect(_ vnRect: CGRect) -> CGRect {
-        // Vision uses bottom-left origin (y=0 at bottom), AVFoundation uses top-left origin (y=0 at top)
-        // Convert Vision normalized coordinates to AVFoundation metadata coordinate space
-        let avRect = CGRect(x: vnRect.minX,
-                           y: 1.0 - vnRect.maxY,
-                           width: vnRect.width,
-                           height: vnRect.height)
-        // Now convert from AVFoundation metadata coordinates to preview layer coordinates
-        // This automatically accounts for video rotation, mirroring, and aspect ratio
-        return previewLayer.layerRectConverted(fromMetadataOutputRect: avRect)
+        return previewLayer.layerRectConverted(fromMetadataOutputRect: vnRect)
     }
 }
 

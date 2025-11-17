@@ -1,64 +1,390 @@
-let passByAndGreetSchema = Model(
-    name: "PassbyAndGreet",
-    description: "Things to say by a Swedish Santa Claus standing in an office corridor meeting a passerby. All three phrases must be coherent.",
+import Foundation
+
+let helloPhrase = "A word or two to quickly say to the person to get their attention. Cannot be long or else they are already gone!"
+let goodbyePhrase = "A final bye bye phrase to end the conversation or when the person leaves (again, not much time, keep it short)."
+
+let peppTalkSchema = Model(
+    name: "PeppTalk",
+    description: "Your scene: Santa lifts everyones mood.",
     properties: [
         Property(
-            name: "firstPhrase",
-            description: "A short first phrase to say to catch their attention. Make it interesting!"
+            name: "happyPhrase",
+            description: "A very short personal phrase (less than 10 words) to make the person happy!"
+        ),
+    ]
+)
+
+let passByAndGreetSchema = Model(
+    name: "PassbyAndGreet",
+    description: "Your scene: Santa tries to start a quick chat.",
+    properties: [
+        Property(
+            name: "helloPhrase",
+            description: helloPhrase
         ),
         Property(
-            name: "secondPhrase",
-            description: "A second phrase to say once that person got closer."
+            name: "conversationPhrase",
+            description: "A phrase to say once the person stopped and got closer."
         ),
         Property(
-            name: "thirdPhrase",
-            description: "A final phrase to say goodbye and end the conversation."
+            name: "goodbyePhrase",
+            description: goodbyePhrase
         ),
     ]
 )
 
 let quizSchema = Model(
     name: "Quiz",
-    description: "A funny quiz with three choices. Put each answer in its own field. Do not add A/B/C to the answers.",
+    description: "Your scene: Santa gives a very short, funny quiz with three choices. Put each answer in its own field. Do not add A/B/C to the answers.",
     properties: [
         Property(
+            name: "helloPhrase",
+            description: helloPhrase
+        ),
+        Property(
             name: "question",
-            description: "A short single line question about a random topic. Make it interesting!"
+            description: "A short single line question about a topic, about the situation, christmas or something random."
         ),
         Property(
             name: "answer1",
-            description: "A single line first answer to the question."
+            description: "A single short first answer to the question."
         ),
         Property(
             name: "answer2",
-            description: "A single line second answer to the question."
+            description: "A single short second answer to the question."
         ),
         Property(
             name: "answer3",
-            description: "A single line third answer to the question."
+            description: "A single short third answer to the question."
         ),
         Property(
-            name: "ending",
-            description: "The resolving answer to the quiz, followed by a short goodbye phrase."
+            name: "correct_answer",
+            description: "The answer you think it should be (can be one of the above or something unexpected but related)."
+        ),
+        Property(
+            name: "goodbyePhrase",
+            description: goodbyePhrase
         ),
     ]
 )
 
 let jokeSchema = Model(
     name: "Joke",
-    description: "An office worker stands in front of Santa. Give them a compliment only Santa Claus would know, and a tasteful joke, divided in a buildup and a punchline.",
+    description: "Your scene: Santa knows a secret about the person he meets. Keep it short, tasteful and classy!",
     properties: [
         Property(
+            name: "helloPhrase",
+            description: helloPhrase
+        ),
+        Property(
+            name: "secret",
+            description: "A short single line about a persons secret. Santa knows everyones secrets!"
+        ),
+        Property(
             name: "compliment",
-            description: "A short single line compliment."
+            description: "A very short single line compliment about that secret."
         ),
         Property(
-            name: "buildup",
-            description: "A very short single line buildup for a joke about the person. Santa knows everyones secrets!"
-        ),
-        Property(
-            name: "punchline",
-            description: "A very short single line punchline that goes with the buildup."
+            name: "goodbyePhrase",
+            description: goodbyePhrase
         ),
     ]
 )
+
+//
+
+extension String {
+    func makeRandom(_ randomTopicAction: String, _ randomTopic: String) -> String {
+        self
+            .replacingOccurrences(of: "[action]", with: randomTopicAction)
+            .replacingOccurrences(of: "[topic]", with: randomTopic)
+    }
+}
+
+let randomTopicActions = [
+    "investment in",
+    "ideas about",
+    "the color of",
+    "the opposite of",
+    "the future of",
+    "the history of",
+    "criticism of",
+    "defense of",
+    "advantages of",
+    "disadvantages of",
+    "risks of",
+    "opportunities in",
+    "consequences of",
+    "effects of",
+    "strategies for",
+    "the vision for",
+    "dreams of",
+    "nightmares about",
+    "fantasies about",
+    "metaphor for",
+    "the symbolism in",
+    "the humor in",
+    "the irony in",
+    "the paradox in",
+    "the mystery of",
+    "the scandal around",
+    "the secret behind",
+    "the origin of",
+    "future scenarios for",
+    "fairy tales about",
+    "haiku about",
+    "stand-up routine about",
+    "memes about",
+    "tweetstorm about",
+    "diary entries about",
+    "news article about",
+    "police report about",
+    "bug report about",
+    "manual for",
+    "user guide to",
+    "roadmap for",
+    "retrospective about",
+    "postmortem about",
+    "business plan for",
+    "budget for",
+    "workshop about",
+    "role-play around",
+    "debate about",
+    "lecture about",
+    "TED talk about",
+    "art installation about",
+    "photo exhibition about",
+    "board game about",
+    "podcast episode about",
+    "radio play about",
+    "song title about",
+    "soundtrack for",
+    "film script about",
+    "TV series about",
+    "dystopia about",
+    "utopia about",
+    "the manual for surviving",
+    "life coaching around",
+    "therapy session about",
+    "childhood memories of",
+    "nostalgia around",
+    "future anxiety about",
+    "the love of",
+    "the hatred of",
+    "the obsession with",
+    "the dependence on",
+    "the conflict around",
+    "the balance in",
+    "the compromise around",
+    "the negotiation about",
+    "legislation about",
+    "the jungle of paragraphs around",
+    "policy for",
+    "the ethics around",
+    "the morality in",
+    "security flaws in",
+    "test strategy for",
+    "proof-of-concept for",
+    "hackathon ideas about",
+    "prototype of",
+    "wireframes for",
+    "UX disaster around",
+    "dark-pattern version of",
+    "worst possible interpretation of",
+    "best possible interpretation of",
+    "random theory about",
+    "conspiracy theory about",
+    "office gossip about",
+    "coffee machine talk about",
+    "small talk about",
+    "LinkedIn post about",
+    "CV line about",
+    "press release about",
+    "poster campaign for",
+    "tattoo with"
+]
+
+
+let randomTopics = [
+    "snowfall",
+    "icicle",
+    "frostbite",
+    "sleigh",
+    "reindeer",
+    "lucia",
+    "yule",
+    "solstice",
+    "midwinter",
+    "gingerbread",
+    "tinsel",
+    "ornament",
+    "pinecone",
+    "snowplow",
+    "icebreaker",
+    "blizzard",
+    "skylift",
+    "fjord",
+    "archipelago",
+    "stockholm",
+    "government",
+    "ministry",
+    "policy",
+    "regulation",
+    "oversight",
+    "legislation",
+    "committee",
+    "protocol",
+    "compliance",
+    "audit",
+    "security",
+    "encryption",
+    "firewall",
+    "sandbox",
+    "malware",
+    "phishing",
+    "breach",
+    "token",
+    "certificate",
+    "sandbox",
+    "debugger",
+    "compiler",
+    "runtime",
+    "endpoint",
+    "database",
+    "server",
+    "cluster",
+    "container",
+    "pipeline",
+    "backlog",
+    "sprint",
+    "scrum",
+    "retrospective",
+    "kanban",
+    "epic",
+    "iteration",
+    "standup",
+    "commit",
+    "branch",
+    "merge",
+    "deployment",
+    "feature",
+    "incident",
+    "postmortem",
+    "outage",
+    "uptime",
+    "latency",
+    "interface",
+    "protocol",
+    "firmware",
+    "driver",
+    "workload",
+    "office",
+    "desk",
+    "meeting",
+    "conference",
+    "printer",
+    "escalator",
+    "elevator",
+    "corridor",
+    "cafeteria",
+    "snowstorm",
+    "icestorm",
+    "frost",
+    "hail",
+    "northwind",
+    "nightshift",
+    "patrol",
+    "police",
+    "dispatcher",
+    "evidence",
+    "forensics",
+    "unit",
+    "precinct",
+    "sirens",
+    "emergency",
+    "citizen",
+    "report",
+    "oversight",
+    "municipality",
+    "council",
+    "warrant",
+    "investigation",
+    "archive",
+    "records",
+    "workstation",
+    "terminal",
+    "algorithm",
+    "pattern",
+    "signature",
+    "checksum",
+    "keypair",
+    "authenticator",
+    "honeypot",
+    "snowdrift",
+    "freezingpoint",
+    "icecrystal",
+    "midday",
+    "twilight",
+    "northernlights",
+    "reception",
+    "airlock",
+    "gateway",
+    "cloud",
+    "cluster",
+    "endpoint",
+    "repository",
+    "branching",
+    "blueprint",
+    "budget",
+    "roadmap",
+    "taskforce",
+    "committee",
+    "briefing",
+    "protocol",
+    "advisory",
+    "oversight",
+    "ticket",
+    "workflow",
+    "dashboard",
+    "analysis",
+    "metrics",
+    "telemetry",
+    "uptime",
+    "failover",
+    "snapshot",
+    "reboot",
+    "escalation",
+    "handover",
+    "deadline",
+    "backoffice",
+    "headquarters",
+    "subzero",
+    "windchill",
+    "icecap",
+    "snowflake",
+    "mitigation",
+    "triage",
+    "dispatch",
+    "handover",
+    "checkpoint",
+    "border",
+    "wintercoat",
+    "mittens",
+    "headlamp",
+    "frostguard",
+    "icehood",
+    "holidays",
+    "giftwrap",
+    "ribbon",
+    "mistletoe",
+    "stocking",
+    "caroling",
+    "chimney",
+    "lantern",
+    "candlestick",
+    "midwinter",
+    "newyear",
+    "countdown",
+    "resolution",
+    "fireworks"
+]
