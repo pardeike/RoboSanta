@@ -106,23 +106,22 @@ final class CameraManager: NSObject, ObservableObject {
         previewLayer.videoGravity = .resizeAspect
         hostLayer.sublayers?.forEach { $0.removeFromSuperlayer() }
 
-        previewLayer.frame = hostLayer.bounds
-        previewLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        // For portrait camera (90 degree rotation), we need to swap width/height
+        let bounds = hostLayer.bounds
+        let rotatedBounds = CGRect(x: 0, y: 0, width: bounds.height, height: bounds.width)
+        
+        previewLayer.frame = rotatedBounds
+        previewLayer.position = CGPoint(x: bounds.width / 2, y: bounds.height / 2)
+        previewLayer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        
+        // Rotate 90 degrees clockwise
+        previewLayer.transform = CATransform3DMakeRotation(.pi / 2, 0, 0, 1)
+        
         hostLayer.addSublayer(previewLayer)
-
-        // Rotate preview video 90 degrees clockwise to correct for portrait camera orientation
-        print("DEBUG: previewLayer.connection = \(String(describing: previewLayer.connection))")
-        if let conn = previewLayer.connection {
-            print("DEBUG: Connection exists, isVideoRotationAngleSupported(90) = \(conn.isVideoRotationAngleSupported(90))")
-            if conn.isVideoRotationAngleSupported(90) {
-                conn.videoRotationAngle = 90
-                print("DEBUG: Set videoRotationAngle to 90, current value = \(conn.videoRotationAngle)")
-            } else {
-                print("DEBUG: 90 degree rotation not supported")
-            }
-        } else {
-            print("DEBUG: previewLayer.connection is nil!")
-        }
+        
+        print("DEBUG: Applied 90° rotation transform to preview layer")
+        print("DEBUG: Host bounds: \(bounds)")
+        print("DEBUG: Preview rotated bounds: \(rotatedBounds)")
 
         overlayLayer.frame = hostLayer.bounds
         overlayLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
@@ -217,7 +216,16 @@ final class CameraManager: NSObject, ObservableObject {
     }
 
     private func toPreviewRect(_ vnRect: CGRect) -> CGRect {
-        return previewLayer.layerRectConverted(fromMetadataOutputRect: vnRect)
+        // Get rect in preview layer's coordinate space
+        let previewRect = previewLayer.layerRectConverted(fromMetadataOutputRect: vnRect)
+        
+        // Convert from preview layer space to overlay layer space
+        // Since preview is rotated but overlay is not, we need to account for the rotation
+        if let converted = previewLayer.superlayer?.convert(previewRect, from: previewLayer) {
+            return converted
+        }
+        
+        return previewRect
     }
 }
 
