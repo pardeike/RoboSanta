@@ -27,7 +27,7 @@ struct EntryPoint {
         while !Task.isCancelled {
             let randomTopicAction = randomTopicActions.randomElement()!
             let randomTopic = randomTopics.randomElement()!
-            switch Int.random(in: 0...0) {
+            switch Int.random(in: 0...3) {
                 case 0:
                     if let result = await thinker.generateText(prompt, randomTopicAction, randomTopic, peppTalkSchema) {
                         await speaker.say("Happyness", result.value("happyPhrase"))
