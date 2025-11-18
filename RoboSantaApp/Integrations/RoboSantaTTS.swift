@@ -34,7 +34,7 @@ struct RoboSantaTTS: SantaVoice {
     func tts(_ file: String, _ text: String) async {
         let cleaned = text.cleanup()
         guard !cleaned.isEmpty else { return }
-        print("\(file): \(text)")
+        print("\(file): \(cleaned)")
         guard let destination = prepareOutputURL(for: file) else { return }
         guard await server.waitUntilReady() else {
             print("TTS server not ready for \(file)")
@@ -80,6 +80,7 @@ struct RoboSantaTTS: SantaVoice {
                 try? await Task.sleep(for: .milliseconds(ms))
                 continue
             }
+            print("🔊 \(file)")
             let file = tempSantaDir.appendingPathComponent(file)
             let player = try! AVAudioPlayer(contentsOf: file)
             player.play()
