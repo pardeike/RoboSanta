@@ -24,32 +24,34 @@ struct RoboSantaTTS: SantaVoice {
         }
         return url
     }
-    
+
     private let session: URLSession
-    
+
     init() {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 300
         configuration.timeoutIntervalForResource = 300
         session = URLSession(configuration: configuration)
     }
-    
+
     func tts(_ file: String, _ text: String) async {
         let cleaned = text.cleanup()
         guard !cleaned.isEmpty else { return }
         guard let destination = prepareOutputURL(for: file) else { return }
-        
+
         struct Payload: Encodable {
-            let text: String
             let file: String
+            let voice: String
+            let text: String
         }
-        
+
         var request = URLRequest(url: RoboSantaTTS.serverURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(Payload(text: cleaned, file: destination.path))
+        let payload = Payload(file: destination.path, voice: "alfons1.wav", text: cleaned)
+        request.httpBody = try? JSONEncoder().encode(payload)
         request.timeoutInterval = 300
-        
+
         do {
             let (_, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
@@ -68,7 +70,7 @@ struct RoboSantaTTS: SantaVoice {
             print("TTS request failed for \(file): \(error)")
         }
     }
-    
+
     func speak() async {
         for file in TTSServer.files {
             if file.starts(with: "#") {
