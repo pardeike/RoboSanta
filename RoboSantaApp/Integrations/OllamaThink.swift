@@ -24,16 +24,30 @@ struct OllamaThink: Think {
         
         print("Sending...")
         
-        let resp = try await client.chat(
-            model: modelName,
-            messages: [
-                .system(system),
-                .user(user)
-            ],
-            options: opts,
-            format: schema,
-            think: true,
-        )
+        var resp: Client.ChatResponse?
+        while true {
+            do {
+                resp = try await client.chat(
+                    model: modelName,
+                    messages: [
+                        .system(system),
+                        .user(user)
+                    ],
+                    options: opts,
+                    format: schema,
+                    think: true,
+                )
+                break
+            } catch {
+                if let urlError = error as? URLError, urlError.errorCode == -1005 {
+                    print("Retrying...")
+                } else {
+                    break
+                }
+            }
+        }
+        
+        guard let resp else { return try JSONDecoder().decode(T.self, from: Data()) }
         
         //print("Thinking: \(resp.message.thinking ?? "")")
         //print("Content: \(resp.message.content)")
