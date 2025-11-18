@@ -1,21 +1,17 @@
 import AVFAudio
 import Foundation
 
+let tempSantaDir = URL(fileURLWithPath: "/tmp/santa")
+
 @MainActor
 struct RoboSantaTTS: SantaVoice {
-    private static let serverURL = URL(string: "http://127.0.0.1:8080")!
-    private static let outputDirectory: URL = {
-        do {
-            try FileManager.default.createDirectory(at: TTSServer.tempSantaDir, withIntermediateDirectories: true)
-        } catch {
-            print("Failed to create \(TTSServer.tempSantaDir): \(error)")
-        }
-        return TTSServer.tempSantaDir
-    }()
+    let server = TTSServer()
+    
     private func prepareOutputURL(for fileName: String) -> URL? {
         guard !fileName.isEmpty else { return nil }
-        let url = RoboSantaTTS.outputDirectory.appendingPathComponent(fileName)
+        let url = tempSantaDir.appendingPathComponent(fileName)
         do {
+            try FileManager.default.createDirectory(at: tempSantaDir, withIntermediateDirectories: true)
             if FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
             }
@@ -37,6 +33,7 @@ struct RoboSantaTTS: SantaVoice {
     func tts(_ file: String, _ text: String) async {
         let cleaned = text.cleanup()
         guard !cleaned.isEmpty else { return }
+        print("\(file): \(text)")
         guard let destination = prepareOutputURL(for: file) else { return }
 
         struct Payload: Encodable {
@@ -45,7 +42,7 @@ struct RoboSantaTTS: SantaVoice {
             let text: String
         }
 
-        var request = URLRequest(url: RoboSantaTTS.serverURL)
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:8080")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let payload = Payload(file: destination.path, voice: "alfons1.wav", text: cleaned)
@@ -65,26 +62,26 @@ struct RoboSantaTTS: SantaVoice {
             //let player = try AVAudioPlayer(contentsOf: destination)
             //player.play()
             //while player.isPlaying { usleep(100_000) }
-            TTSServer.files.append(file)
+            server.files.append(file)
         } catch {
             print("TTS request failed for \(file): \(error)")
         }
     }
 
     func speak() async {
-        for file in TTSServer.files {
+        for file in server.files {
             if file.starts(with: "#") {
                 let ms = Int(String(file.dropFirst()))!
                 try? await Task.sleep(for: .milliseconds(ms))
                 continue
             }
-            let file = TTSServer.tempSantaDir.appendingPathComponent(file)
+            let file = tempSantaDir.appendingPathComponent(file)
             let player = try! AVAudioPlayer(contentsOf: file)
             player.play()
             while player.isPlaying {
                 try? await Task.sleep(for: .milliseconds(100))
             }
         }
-        TTSServer.files = []
+        server.files = []
     }
 }
