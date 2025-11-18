@@ -116,9 +116,10 @@ extension String {
         var cleaned = self
             .filter { !$0.isEmoji }
             .replacingOccurrences(of: "...", with: "…")
+            .replacingOccurrences(of: "\"", with: "")
             .replacingOccurrences(of: "ho ho ho", with: "hå,hå,hå!", options: .caseInsensitive)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        if cleaned.isEmpty || cleaned == "." { cleaned = "ok" }
+        if cleaned.count < 2 { cleaned = "ok" }
         if !cleaned.hasSuffix(".") && !cleaned.hasSuffix("!") && !cleaned.hasSuffix("?") {
             cleaned = "\(cleaned)!"
         }
