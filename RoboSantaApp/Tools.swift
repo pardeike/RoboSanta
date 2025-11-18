@@ -116,16 +116,7 @@ extension String {
         var cleaned = self
             .filter { !$0.isEmoji }
             .replacingOccurrences(of: "...", with: "…")
-            .replacing(/(?i)ho ho ho!?/) { match in
-                let firstChar = match.first!
-                let replacement = "hå,hå,hå!"
-                
-                if firstChar.isUppercase {
-                    return replacement.prefix(1).uppercased() + replacement.dropFirst()
-                } else {
-                    return replacement
-                }
-            }
+            .replacingOccurrences(of: "ho ho ho", with: "hå,hå,hå!", options: .caseInsensitive)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if cleaned.isEmpty || cleaned == "." { cleaned = "ok" }
         if !cleaned.hasSuffix(".") && !cleaned.hasSuffix("!") && !cleaned.hasSuffix("?") {
