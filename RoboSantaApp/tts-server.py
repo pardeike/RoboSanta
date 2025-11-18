@@ -91,6 +91,19 @@ def synthesize_to_file(output_path: str, voice: str, text: str) -> None:
 class TTSServerHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def do_GET(self):
+        if self.path == "/":
+            response_body = b"OK"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(response_body)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(response_body)
+            self.wfile.flush()
+            return
+        self.send_error(404, "Not Found")
+
     def do_POST(self):
         content_length = self.headers.get("Content-Length")
         if content_length is None:

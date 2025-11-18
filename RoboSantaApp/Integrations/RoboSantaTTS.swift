@@ -9,7 +9,8 @@ struct RoboSantaTTS: SantaVoice {
     
     private func prepareOutputURL(for fileName: String) -> URL? {
         guard !fileName.isEmpty else { return nil }
-        let url = tempSantaDir.appendingPathComponent(fileName)
+        let outputName = fileName.lowercased().hasSuffix(".wav") ? fileName : "\(fileName).wav"
+        let url = tempSantaDir.appendingPathComponent(outputName)
         do {
             try FileManager.default.createDirectory(at: tempSantaDir, withIntermediateDirectories: true)
             if FileManager.default.fileExists(atPath: url.path) {
@@ -35,6 +36,10 @@ struct RoboSantaTTS: SantaVoice {
         guard !cleaned.isEmpty else { return }
         print("\(file): \(text)")
         guard let destination = prepareOutputURL(for: file) else { return }
+        guard await server.waitUntilReady() else {
+            print("TTS server not ready for \(file)")
+            return
+        }
 
         struct Payload: Encodable {
             let file: String
@@ -62,7 +67,7 @@ struct RoboSantaTTS: SantaVoice {
             //let player = try AVAudioPlayer(contentsOf: destination)
             //player.play()
             //while player.isPlaying { usleep(100_000) }
-            server.files.append(file)
+            server.files.append(destination.lastPathComponent)
         } catch {
             print("TTS request failed for \(file): \(error)")
         }
