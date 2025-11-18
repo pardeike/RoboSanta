@@ -4,7 +4,7 @@ import AVFAudio
 import Security
 
 @MainActor
-struct ElevenLabs: Speak {
+struct ElevenLabs: SantaVoice {
     
     // DEFAULT VOICES (stability:0.3,similarity:1,style:0,speed:1.08)
     // let voiceID = "2gPFXx8pN3Avh27Dw5Ma" // Oxley
@@ -43,13 +43,13 @@ struct ElevenLabs: Speak {
         let previous_text: String
     }
     
-    func tts(_ label: String, _ text: String) async {
+    func tts(_ file: String, _ text: String) async {
         guard let apiKey = getAPIKey("Elevenlabs API Key"), !apiKey.isEmpty else {
             print("Missing ElevenLabs API key")
             return
         }
         let cleaned = text.cleanup()
-        print("\(label): \(cleaned)")
+        print("\(file): \(cleaned)")
         do {
             let url = "https://api-global-preview.elevenlabs.io/v1/text-to-speech/\(voiceID)?output_format=\(outputFormat)&optimize_streaming_latency=4"
             var req = URLRequest(url: URL(string: url)!)
@@ -81,6 +81,5 @@ struct ElevenLabs: Speak {
         }
     }
     
-    func speak(_ labels: [String]) {
-    }
+    func speak() async {}
 }

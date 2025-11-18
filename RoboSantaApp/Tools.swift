@@ -11,9 +11,9 @@ protocol Think {
     ) async throws -> T
 }
 
-protocol Speak {
-    func tts(_ label: String, _ text: String) async
-    func speak(_ labels: [String]) async
+protocol SantaVoice {
+    func tts(_ file: String, _ text: String) async
+    func speak() async
 }
 
 func outputError(errorDescription: String, errorCode: UInt32) {

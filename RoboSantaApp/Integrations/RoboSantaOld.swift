@@ -2,7 +2,7 @@ import AVFAudio
 import AppKit
 
 @MainActor
-struct RoboSantaSpeaker: Speak {
+struct RoboSantaOld: SantaVoice {
     
     func list() {
         _ = AVSpeechSynthesisVoice.speechVoices().map { print($0) }
@@ -54,6 +54,9 @@ struct RoboSantaSpeaker: Speak {
         }
         
         print("✓")
+    }
+    
+    func speak() async {
     }
     
     func speak(_ labels: [String]) async {
