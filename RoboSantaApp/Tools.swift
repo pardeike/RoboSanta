@@ -12,7 +12,8 @@ protocol Think {
 }
 
 protocol Speak {
-    func say(_ label: String, _ text: String) async
+    func tts(_ label: String, _ text: String) async
+    func speak(_ labels: [String]) async
 }
 
 func outputError(errorDescription: String, errorCode: UInt32) {
@@ -111,8 +112,16 @@ extension Character {
 }
 
 extension String {
-    func removingEmojis() -> String {
-        self.filter { !$0.isEmoji }
+    func cleanup() -> String {
+        var cleaned = self
+            .filter { !$0.isEmoji }
+            .replacingOccurrences(of: "...", with: "…")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.isEmpty || cleaned == "." { cleaned = "ok" }
+        if !cleaned.hasSuffix(".") && !cleaned.hasSuffix("!") && !cleaned.hasSuffix("?") {
+            cleaned = "\(cleaned)!"
+        }
+        return cleaned
     }
 }
 

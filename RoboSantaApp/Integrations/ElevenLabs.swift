@@ -43,12 +43,12 @@ struct ElevenLabs: Speak {
         let previous_text: String
     }
     
-    func say(_ label: String, _ text: String) async {
+    func tts(_ label: String, _ text: String) async {
         guard let apiKey = getAPIKey("Elevenlabs API Key"), !apiKey.isEmpty else {
             print("Missing ElevenLabs API key")
             return
         }
-        let cleaned = text.removingEmojis().trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = text.cleanup()
         print("\(label): \(cleaned)")
         do {
             let url = "https://api-global-preview.elevenlabs.io/v1/text-to-speech/\(voiceID)?output_format=\(outputFormat)&optimize_streaming_latency=4"
@@ -79,5 +79,8 @@ struct ElevenLabs: Speak {
         } catch {
             print(error)
         }
+    }
+    
+    func speak(_ labels: [String]) {
     }
 }

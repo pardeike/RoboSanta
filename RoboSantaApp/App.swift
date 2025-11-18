@@ -28,73 +28,63 @@ Använd "du/din/ditt".
 Svara endast med JSON som matchar schemat.
 """
     
-    static let passByTemplate = PromptTemplate(
-        system: baseSystem,
-        scene: "Tomten försöker starta ett snabbt samtal i korridoren."
-    )
-
-    static let peppTemplate = PromptTemplate(
-        system: baseSystem,
-        scene: "Tomten lyfter stämningen på ett personligt sätt."
-    )
-
-    static let quizTemplate = PromptTemplate(
-        system: baseSystem,
-        scene: "Tomten ställer en ultrakort fråga med tre svarsalternativ."
-    )
-
-    static let jokeTemplate = PromptTemplate(
-        system: baseSystem,
-        scene: "Tomten antyder en smakfull hemlighet och ger en stilren komplimang."
-    )
+    static let passByTemplate = PromptTemplate(system: baseSystem, scene: "Tomten försöker starta ett snabbt samtal i korridoren.")
+    static let peppTemplate = PromptTemplate(system: baseSystem, scene: "Tomten lyfter stämningen på ett personligt sätt.")
+    static let quizTemplate = PromptTemplate(system: baseSystem, scene: "Tomten ställer en ultrakort fråga med tre svarsalternativ.")
+    static let jokeTemplate = PromptTemplate(system: baseSystem, scene: "Tomten antyder en smakfull hemlighet och ger en stilren komplimang.")
     
     private static func backgroundLoop() async {
         let thinker: Think = Koala()
-        // let thinker: Think = OllamaThink(modelName: "qwen2.5:7b-instruct")
+        // let thinker: Think = OllamaThink(modelName: "qwen3:8b")
         // let thinker: Think = AppleIntelligence()
         let opts = GenerationOptions(temperature: 0.9, topP: 0.92, topK: 60, repeatPenalty: 1.1)
         let speaker: Speak = RoboSantaSpeaker() // ElevenLabs()
+        //await speaker.say("START", "Nu kör vi!")
+        //speaker.speak(["START"])
         while !Task.isCancelled {
             let randomTopicAction = randomTopicActions.randomElement()!
             let randomTopic = randomTopics.randomElement()!
             switch Int.random(in: 0...3) {
                 case 0:
-                    print("Pepp Talk (\(randomTopic)):")
+                    print("🧠 Pepp Talk (\(randomTopic))")
                     struct PeppOut: Decodable { let happyPhrase: String }
                     do {
                         let r: PeppOut = try await thinker.generate(template: peppTemplate, topicAction: randomTopicAction, topic: randomTopic, model: peppTalkSchema, options: opts)
-                        await speaker.say("Happyness", r.happyPhrase)
+                        await speaker.tts("Happyness", r.happyPhrase)
+                        await speaker.speak(["Happyness"])
                     } catch {
                         print(error)
                     }
                 
                 case 1:
-                    print("Greeting (\(randomTopic)):")
+                    print("🧠 Greeting (\(randomTopic))")
                     struct GreetOut: Decodable { let helloPhrase, conversationPhrase, goodbyePhrase: String }
                     do {
                         let r: GreetOut = try await thinker.generate(template: passByTemplate, topicAction: randomTopicAction, topic: randomTopic, model: passByAndGreetSchema, options: opts)
-                        await speaker.say("Hello", r.helloPhrase)
-                        await speaker.say("Conversation", r.conversationPhrase)
-                        await speaker.say("Goodbye", r.goodbyePhrase)
+                        await speaker.tts("Hello", r.helloPhrase)
+                        await speaker.tts("Conversation", r.conversationPhrase)
+                        await speaker.tts("Goodbye", r.goodbyePhrase)
+                        await speaker.speak(["Hello", "Conversation", "Goodbye"])
                     } catch {
                         print(error)
                     }
 
                 case 2:
-                    print("Quiz (\(randomTopic)):")
+                    print("🧠 Quiz (\(randomTopic))")
                     for _ in 1...3 {
                         do {
                             let r: QuizOut = try await thinker.generate(template: quizTemplate, topicAction: randomTopicAction, topic: randomTopic, model: quizSchema, options: opts)
                             let (q, a1, a2, a3) = fixQuiz(r) // your existing helper
                             if q.isEmpty || Set([a1,a2,a3]).count < 3 { continue }
-                            await speaker.say("Hello", r.helloPhrase)
-                            await speaker.say("Quiz", q)
-                            await speaker.say("Answer 1", "A: " + a1)
-                            await speaker.say("Answer 2", "B: " + a2)
-                            await speaker.say("Answer 3", "C: " + a3)
+                            await speaker.tts("Hello", r.helloPhrase)
+                            await speaker.tts("Quiz", q)
+                            await speaker.tts("Answer1", "A: " + a1)
+                            await speaker.tts("Answer2", "B: " + a2)
+                            await speaker.tts("Answer3", "C: " + a3)
                             try await Task.sleep(nanoseconds: 1_000_000_000)
-                            await speaker.say("Correct Answer", "Svaret är: \(r.correct_answer)")
-                            await speaker.say("Goodbye", r.goodbyePhrase)
+                            await speaker.tts("Solution", "Svaret är: \(r.correct_answer)")
+                            await speaker.tts("Goodbye", r.goodbyePhrase)
+                            await speaker.speak(["Hello", "Quiz", "Answer1", "Answer2", "Answer3", "WAIT500", "Solution", "Goodbye"])
                             break
                         } catch {
                             print(error)
@@ -102,14 +92,15 @@ Svara endast med JSON som matchar schemat.
                     }
 
                 case 3:
-                    print("Joke (\(randomTopic)):")
+                    print("🧠 Joke (\(randomTopic))")
                     struct JokeOut: Decodable { let helloPhrase, secret, compliment, goodbyePhrase: String }
                     do {
                         let r: JokeOut = try await thinker.generate(template: jokeTemplate, topicAction: randomTopicAction, topic: randomTopic, model: jokeSchema, options: opts)
-                        await speaker.say("Hello", r.helloPhrase)
-                        await speaker.say("Secret", r.secret)
-                        await speaker.say("Compliment", r.compliment)
-                        await speaker.say("Goodbye", r.goodbyePhrase)
+                        await speaker.tts("Hello", r.helloPhrase)
+                        await speaker.tts("Secret", r.secret)
+                        await speaker.tts("Compliment", r.compliment)
+                        await speaker.tts("Goodbye", r.goodbyePhrase)
+                        await speaker.speak(["Hello", "Secret", "Compliment", "Goodbye"])
                     } catch {
                         print(error)
                     }
