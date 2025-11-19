@@ -6,6 +6,9 @@ import Dispatch
 /// Drives the physical figurine by coordinating the four Phidget RC servos.
 /// Feed it `Event`s from the outside world to influence Santa's pose.
 final class StateMachine {
+    
+    let logging = true
+    
     enum Event: Equatable {
         case idle
         case aimCamera(Double) // degrees relative to Santa's forward direction
@@ -41,6 +44,7 @@ final class StateMachine {
             let headFollowRate: Double
             let bodyFollowRate: Double
             let headJitterRange: ClosedRange<Double>
+            let includeCameraBounds: Bool
         }
     }
     
@@ -122,7 +126,8 @@ final class StateMachine {
                 transitionDurationRange: 1.8...3.2,
                 headFollowRate: 0.5,
                 bodyFollowRate: 0.15,
-                headJitterRange: (-5)...5
+                headJitterRange: (-5)...5,
+                includeCameraBounds: true
             )),
             trackingBehavior: .init(
                 holdDuration: 6.0,
@@ -165,6 +170,7 @@ final class StateMachine {
         var nextSwitch: Date = .distantPast
         var transitionStart: Date = .distantPast
         var transitionEnd: Date = .distantPast
+        var headings: [Double] = []
     }
 
     private struct OffsetTracker {
@@ -477,12 +483,28 @@ final class StateMachine {
             let amplitude = range.span / 2
             return center + sin(idlePhase) * amplitude
         case .patrol(let config):
-            guard !config.headings.isEmpty else { return 0 }
             var state = behavior.patrolState
+            var headings = state.headings
+            if headings.isEmpty {
+                headings = resolvedPatrolHeadings(for: config)
+                state.headings = headings
+                if headings.isEmpty {
+                    behavior.patrolState = state
+                    return 0
+                }
+                state.headingIndex = state.headingIndex % max(1, headings.count)
+                let start = headings[state.headingIndex]
+                state.currentHeading = start
+                state.startHeading = start
+                state.targetHeading = start
+                state.transitionStart = now
+                state.transitionEnd = now
+                state.nextSwitch = now + randomInterval(in: config.intervalRange)
+            }
             if now >= state.nextSwitch {
-                state.headingIndex = (state.headingIndex + 1) % config.headings.count
+                state.headingIndex = (state.headingIndex + 1) % headings.count
                 state.startHeading = state.currentHeading
-                state.targetHeading = config.headings[state.headingIndex]
+                state.targetHeading = headings[state.headingIndex]
                 state.transitionStart = now
                 state.transitionEnd = now + randomInterval(in: config.transitionDurationRange)
                 state.nextSwitch = state.transitionEnd + randomInterval(in: config.intervalRange)
@@ -504,7 +526,25 @@ final class StateMachine {
             return state.currentHeading
         }
     }
-    
+
+    private func resolvedPatrolHeadings(for config: IdleBehavior.PatrolConfiguration) -> [Double] {
+        var values = config.headings.map { clampCamera($0) }
+        if config.includeCameraBounds {
+            let bounds = configuration.cameraRange
+            values.append(bounds.lowerBound)
+            values.append(bounds.upperBound)
+        }
+        guard !values.isEmpty else { return [] }
+        values.sort()
+        var deduped: [Double] = []
+        let epsilon = 0.001
+        for value in values {
+            if let last = deduped.last, abs(last - value) < epsilon { continue }
+            deduped.append(value)
+        }
+        return deduped
+    }
+
     private func desiredHeading(now: Date, deltaTime: TimeInterval) -> (Double, OrientationContext) {
         if behavior.manualOverride, let manual = behavior.manualHeading {
             return (clampCamera(manual), .manual)
@@ -708,30 +748,40 @@ final class StateMachine {
     }
     
     private func configureInitialPatrolState(now: Date) {
-        if case .patrol(let config) = behavior.idleBehavior, !config.headings.isEmpty {
-            let index = Int.random(in: 0..<config.headings.count)
-            behavior.patrolState.headingIndex = index
-            let heading = config.headings[index]
-            behavior.patrolState.currentHeading = heading
-            behavior.patrolState.startHeading = heading
-            behavior.patrolState.targetHeading = heading
-            behavior.patrolState.transitionStart = now
-            behavior.patrolState.transitionEnd = now
-            behavior.patrolState.nextSwitch = now + randomInterval(in: config.intervalRange)
-            behavior.bodyTarget = heading
-            behavior.headTarget = heading
-            behavior.desiredHeading = heading
-            logEvent("patrol.init", values: [
-                "heading": heading,
-                "next": behavior.patrolState.nextSwitch.timeIntervalSince1970
-            ])
-            logState("patrol.target", values: ["heading": heading])
-        } else {
+        guard case .patrol(let config) = behavior.idleBehavior else {
             behavior.patrolState = PatrolState()
             behavior.bodyTarget = 0
             behavior.headTarget = 0
             behavior.desiredHeading = 0
+            return
         }
+        let headings = resolvedPatrolHeadings(for: config)
+        guard !headings.isEmpty else {
+            behavior.patrolState = PatrolState()
+            behavior.bodyTarget = 0
+            behavior.headTarget = 0
+            behavior.desiredHeading = 0
+            return
+        }
+        var state = PatrolState()
+        state.headings = headings
+        state.headingIndex = Int.random(in: 0..<headings.count)
+        let heading = headings[state.headingIndex]
+        state.currentHeading = heading
+        state.startHeading = heading
+        state.targetHeading = heading
+        state.transitionStart = now
+        state.transitionEnd = now
+        state.nextSwitch = now + randomInterval(in: config.intervalRange)
+        behavior.patrolState = state
+        behavior.bodyTarget = heading
+        behavior.headTarget = heading
+        behavior.desiredHeading = heading
+        logEvent("patrol.init", values: [
+            "heading": heading,
+            "next": state.nextSwitch.timeIntervalSince1970
+        ])
+        logState("patrol.target", values: ["heading": heading])
     }
     
     private func leftHandValue(deltaTime: TimeInterval) -> Double {
@@ -793,6 +843,7 @@ final class StateMachine {
     }
     
     private func logEvent(_ type: String, values: [String: CustomStringConvertible] = [:]) {
+        guard logging else { return }
         var payload: [String: CustomStringConvertible] = ["type": type]
         for (k, v) in values { payload[k] = v }
         if let common = telemetryPayload(from: payload), let json = telemetry.serialize(common) {
@@ -801,6 +852,7 @@ final class StateMachine {
     }
 
     private func logState(_ label: String, values: [String: CustomStringConvertible] = [:]) {
+        guard logging else { return }
         var message = "[state] \(label)"
         if !values.isEmpty {
             let details = values.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
