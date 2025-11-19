@@ -36,7 +36,7 @@ class TTSServer {
             return
         }
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/python")
+        process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/python3.11")
         process.arguments = ["tts-server.py"]
         process.currentDirectoryURL = scriptDirectory
         
