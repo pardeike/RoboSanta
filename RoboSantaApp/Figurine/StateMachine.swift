@@ -121,7 +121,7 @@ final class StateMachine {
                 voltage: nil
             ),
             idleBehavior: .patrol(.init(
-                headings: [-85, 85],
+                headings: [-65, 65],
                 intervalRange: 6...10,
                 transitionDurationRange: 1.8...3.2,
                 headFollowRate: 0.5,
@@ -596,7 +596,10 @@ final class StateMachine {
         let params = orientationParameters(for: context)
 
         // Head demand relative to the (slow) body reference.
-        let rawHeadDemand = clampHead(desired - behavior.bodyTarget + (context == .search ? behavior.headJitterOffset : 0))
+        let headShare = (context == .search ? configuration.headContributionRatio.clamped(to: 0...1) : 1.0)
+        let headJitter = (context == .search ? behavior.headJitterOffset : 0)
+        let deltaHeading = (desired - behavior.bodyTarget) * headShare
+        let rawHeadDemand = clampHead(deltaHeading + headJitter)
 
         // Gain scheduling: smaller gains near center during tracking
         let offMag = abs(behavior.lastFaceOffset ?? 1.0)
