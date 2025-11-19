@@ -3,6 +3,8 @@ import AVFoundation
 import SwiftUI
 import Ollama
 
+let santa = StateMachine()
+
 @available(macOS 11.0, *)
 struct MinimalApp: App {
     @StateObject private var camera = CameraManager()
@@ -37,7 +39,7 @@ Svara endast med JSON som matchar schemat.
     // static let thinker: Think = OllamaThink(modelName: "qwen3:8b")
     static let thinker: Think = AppleIntelligence()
     
-    static let santa: SantaVoice = RoboSantaTTS()
+    static let voice: SantaVoice = RoboSantaTTS()
     // static let santa: SantaVoice = ElevenLabs()
     
     private static func backgroundLoop() async {
@@ -51,7 +53,7 @@ Svara endast med JSON som matchar schemat.
                     struct PeppOut: Decodable { let happyPhrase: String }
                     do {
                         let r: PeppOut = try await thinker.generate(template: peppTemplate, topicAction: randomTopicAction, topic: randomTopic, model: peppTalkSchema, options: opts)
-                        await santa.tts("Happyness", r.happyPhrase)
+                        await voice.tts("Happyness", r.happyPhrase)
                     } catch {
                         print(error)
                     }
@@ -61,9 +63,9 @@ Svara endast med JSON som matchar schemat.
                     struct GreetOut: Decodable { let helloPhrase, conversationPhrase, goodbyePhrase: String }
                     do {
                         let r: GreetOut = try await thinker.generate(template: passByTemplate, topicAction: randomTopicAction, topic: randomTopic, model: passByAndGreetSchema, options: opts)
-                        await santa.tts("Hello", r.helloPhrase)
-                        await santa.tts("Conversation", r.conversationPhrase)
-                        await santa.tts("Goodbye", r.goodbyePhrase)
+                        await voice.tts("Hello", r.helloPhrase)
+                        await voice.tts("Conversation", r.conversationPhrase)
+                        await voice.tts("Goodbye", r.goodbyePhrase)
                     } catch {
                         print(error)
                     }
@@ -75,14 +77,14 @@ Svara endast med JSON som matchar schemat.
                             let r: QuizOut = try await thinker.generate(template: quizTemplate, topicAction: randomTopicAction, topic: randomTopic, model: quizSchema, options: opts)
                             let (q, a1, a2, a3) = fixQuiz(r) // your existing helper
                             if q.isEmpty || Set([a1,a2,a3]).count < 3 { continue }
-                            await santa.tts("Hello", r.helloPhrase)
-                            await santa.tts("Quiz", q)
-                            await santa.tts("Answer1", "A: " + a1)
-                            await santa.tts("Answer2", "B: " + a2)
-                            await santa.tts("Answer3", "C: " + a3)
+                            await voice.tts("Hello", r.helloPhrase)
+                            await voice.tts("Quiz", q)
+                            await voice.tts("Answer1", "A: " + a1)
+                            await voice.tts("Answer2", "B: " + a2)
+                            await voice.tts("Answer3", "C: " + a3)
                             try await Task.sleep(nanoseconds: 1_000_000_000)
-                            await santa.tts("Solution", "Svaret är: \(r.correct_answer)")
-                            await santa.tts("Goodbye", r.goodbyePhrase)
+                            await voice.tts("Solution", "Svaret är: \(r.correct_answer)")
+                            await voice.tts("Goodbye", r.goodbyePhrase)
                             break
                         } catch {
                             print(error)
@@ -94,17 +96,17 @@ Svara endast med JSON som matchar schemat.
                     struct JokeOut: Decodable { let helloPhrase, secret, compliment, goodbyePhrase: String }
                     do {
                         let r: JokeOut = try await thinker.generate(template: jokeTemplate, topicAction: randomTopicAction, topic: randomTopic, model: jokeSchema, options: opts)
-                        await santa.tts("Hello", r.helloPhrase)
-                        await santa.tts("Secret", r.secret)
-                        await santa.tts("Compliment", r.compliment)
-                        await santa.tts("Goodbye", r.goodbyePhrase)
+                        await voice.tts("Hello", r.helloPhrase)
+                        await voice.tts("Secret", r.secret)
+                        await voice.tts("Compliment", r.compliment)
+                        await voice.tts("Goodbye", r.goodbyePhrase)
                     } catch {
                         print(error)
                     }
 
                 default: break
             }
-            await santa.speak()
+            await voice.speak()
             print("")
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
@@ -112,7 +114,8 @@ Svara endast med JSON som matchar schemat.
     
     static func main() async {
         let loopTask = Task.detached(priority: .background) {
-            await backgroundLoop()
+            try await santa.start()
+            // await backgroundLoop()
         }
         MinimalApp.main()
         print("Preparing shutdown")
