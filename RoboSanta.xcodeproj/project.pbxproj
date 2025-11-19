@@ -28,11 +28,6 @@
 			path = RoboSantaApp;
 			sourceTree = "<group>";
 		};
-		E174BE322E51361B00BB3125 /* RoboSantaSpeaker */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = RoboSantaSpeaker;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,7 +47,6 @@
 		E103C7602E4E671D007662B4 = {
 			isa = PBXGroup;
 			children = (
-				E174BE322E51361B00BB3125 /* RoboSantaSpeaker */,
 				E11466D52EA8E7B200298E72 /* RoboSantaApp */,
 				E103C8B52E4E67CE007662B4 /* Frameworks */,
 				E103C76A2E4E671D007662B4 /* Products */,

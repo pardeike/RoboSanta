@@ -29,7 +29,6 @@ extension Property {
         var map: [String: Value] = ["type": "string"]
         if let min = minLength { map["minLength"] = try! Value(Double(min)) }
         if let max = maxLength { map["maxLength"] = try! Value(Double(max)) }
-        // single line; optionally discourage questions
         let basePattern = "^[^\\n]+$"
         let pattern = disallowQuestion ? "^(?!.*\\?).+$" : basePattern
         map["pattern"] = .string(pattern)

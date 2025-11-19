@@ -47,7 +47,11 @@ final class CameraManager: NSObject, ObservableObject {
             position: .unspecified
         )
         devices = discovery.devices
-        if selectedDeviceID == nil { selectedDeviceID = devices.first?.uniqueID }
+        if selectedDeviceID == nil {
+            selectedDeviceID = devices
+                .first(where: { $0.localizedName == "Webcam" })?
+                .uniqueID
+        }
     }
 
     func applySelection() {
