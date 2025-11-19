@@ -18,6 +18,9 @@ final class CameraManager: NSObject, ObservableObject {
 
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private let overlayLayer = CALayer()
+    private var hasActiveFace = false
+    private var lastFaceTimestamp: Date?
+    private let lostThreshold: TimeInterval = 0.6
 
     private var visionBusy = false
     private let visionQueue = DispatchQueue(label: "cam.vision")
@@ -204,11 +207,37 @@ final class CameraManager: NSObject, ObservableObject {
                     addLabel(String(format: "%.0f°", y), at: f.rect)
                 }
             }
+            self.driveFigurine(with: faces)
         }
     }
 
     private func toPreviewRect(_ vnRect: CGRect) -> CGRect {
         return previewLayer.layerRectConverted(fromMetadataOutputRect: vnRect)
+    }
+    
+    private func driveFigurine(with faces: [(rect: CGRect, yawDeg: Double?)]) {
+        let width = overlayLayer.bounds.width
+        guard width > 0 else { return }
+        if let candidate = faces.min(by: { abs(horizontalOffset(for: $0.rect, width: width)) < abs(horizontalOffset(for: $1.rect, width: width)) }) {
+            hasActiveFace = true
+            lastFaceTimestamp = Date()
+            let offset = horizontalOffset(for: candidate.rect, width: width)
+            let mirrored = videoOutput.connection(with: .video)?.isVideoMirrored == true
+            santa.send(.personDetected(relativeOffset: mirrored ? -offset : offset))
+        } else {
+            guard hasActiveFace else { return }
+            if let last = lastFaceTimestamp, Date().timeIntervalSince(last) < lostThreshold { return }
+            hasActiveFace = false
+            lastFaceTimestamp = nil
+            santa.send(.personLost)
+        }
+    }
+    
+    private func horizontalOffset(for rect: CGRect, width: CGFloat) -> Double {
+        guard width > 0 else { return 0 }
+        let normalized = (rect.midX / width) - 0.5
+        let value = Double(normalized * 2)
+        return max(-1.0, min(1.0, value))
     }
 }
 
