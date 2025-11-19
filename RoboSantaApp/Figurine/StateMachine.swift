@@ -1,49 +1,60 @@
+// StateMachine.swift
+//
+// Clean, oscillation‑resistant state machine for RoboSanta.
+// - Single source of truth: desired camera heading.
+// - Decoupled head/body solution (head leads, body follows).
+// - α‑β (g‑h) filter for face heading + short lead prediction.
+// - Measurement gating to avoid rapid target switching with multiple faces.
+// - Deadband on visual error to avoid micro‑chatter.
+// - High‑signal telemetry + succinct stdout state markers.
+
 import Foundation
 import Dispatch
 
 /// Drives the physical figurine by coordinating the four Phidget RC servos.
-/// A lightweight internal loop keeps gestures like waves or idle sweeps alive
-/// even when nothing else is happening in the app. Feed it `Event`s from the
-/// outside world to influence Santa's pose.
+/// Feed it `Event`s from the outside world (e.g. from CameraManager).
 final class StateMachine {
+
+    // MARK: - Public API
+
     enum Event: Equatable {
         case idle
-        case aimCamera(Double) // degrees relative to Santa's forward direction
+        case aimCamera(Double)                // absolute degrees, camera-forward = 0
         case clearTarget
         case setLeftHand(LeftHandGesture)
         case setRightHand(RightHandGesture)
         case setIdleBehavior(IdleBehavior)
-        case personDetected(relativeOffset: Double)
+        case personDetected(relativeOffset: Double) // [-1, 1], -1=far left, +1=far right
         case personLost
     }
-    
+
     enum LeftHandGesture: Equatable {
         case down
         case up
         case wave(amplitude: Double = 0.12, speed: Double = 1.6)
     }
-    
+
     enum RightHandGesture: Equatable {
         case down
         case point
         case emphasise
     }
-    
+
     enum IdleBehavior: Equatable {
         case none
         case sweep(range: ClosedRange<Double>, period: TimeInterval)
         case patrol(PatrolConfiguration)
-        
+
         struct PatrolConfiguration: Equatable {
-            let headings: [Double]
-            let intervalRange: ClosedRange<TimeInterval>
+            let headings: [Double]                       // absolute headings (deg)
+            let intervalRange: ClosedRange<TimeInterval> // dwell between transitions
             let transitionDurationRange: ClosedRange<TimeInterval>
             let headFollowRate: Double
             let bodyFollowRate: Double
-            let headJitterRange: ClosedRange<Double>
+            let headJitterRange: ClosedRange<Double>     // small random head jitter in search
         }
     }
-    
+
     struct FigurinePose {
         var bodyAngle: Double
         var headAngle: Double
@@ -51,7 +62,7 @@ final class StateMachine {
         var rightHand: Double
         var cameraHeading: Double { bodyAngle + headAngle }
     }
-    
+
     struct FigurineConfiguration {
         let leftHand: ServoChannelConfiguration
         let rightHand: ServoChannelConfiguration
@@ -59,22 +70,24 @@ final class StateMachine {
         let body: ServoChannelConfiguration
         let idleBehavior: IdleBehavior
         let trackingBehavior: TrackingBehavior
-        let headContributionRatio: Double
+        let headContributionRatio: Double     // not used for splitting; kept for compatibility
         let loopInterval: TimeInterval
         let attachmentTimeout: TimeInterval
+
+        /// Valid absolute range for the camera (body + head).
         var cameraRange: ClosedRange<Double> {
             (body.logicalRange.lowerBound + head.logicalRange.lowerBound)...(body.logicalRange.upperBound + head.logicalRange.upperBound)
         }
-        
+
         struct TrackingBehavior {
             let holdDuration: TimeInterval
-            let headFollowRate: Double
-            let bodyFollowRate: Double
-            let cameraHorizontalFOV: Double
-            let deadband: Double
-            let predictionSmoothing: Double
+            let headFollowRate: Double         // [0, 1] per tick blending for head
+            let bodyFollowRate: Double         // [0, 1] per tick blending for body
+            let cameraHorizontalFOV: Double    // degrees
+            let deadband: Double               // fraction of half‑FOV, e.g. 0.08 => ~2.4° at 60° FOV
+            let predictionSmoothing: Double    // in [0, 0.95] -> converted to α for α‑β filter
         }
-        
+
         static let `default` = FigurineConfiguration(
             leftHand: .init(
                 name: "LeftHand",
@@ -137,13 +150,9 @@ final class StateMachine {
             attachmentTimeout: 5
         )
     }
-    
+
     struct ServoChannelConfiguration {
-        enum Orientation {
-            case normal
-            case reversed
-        }
-        
+        enum Orientation { case normal, reversed }
         let name: String
         let channel: Int
         let pulseRange: ClosedRange<Double>
@@ -153,18 +162,16 @@ final class StateMachine {
         let orientation: Orientation
         let voltage: RCServoVoltage?
     }
-    
+
     enum FigurineError: Error {
         case alreadyRunning
         case attachmentTimeout(channel: Int)
     }
-    
-    private enum OrientationContext {
-        case search
-        case tracking
-        case manual
-    }
-    
+
+    // MARK: - Internal model
+
+    private enum OrientationContext { case search, tracking, manual }
+
     private struct PatrolState {
         var headingIndex: Int = 0
         var currentHeading: Double = 0
@@ -174,58 +181,106 @@ final class StateMachine {
         var transitionStart: Date = .distantPast
         var transitionEnd: Date = .distantPast
     }
-    
+
+    /// α‑β (g‑h) filter for heading with a tiny lead prediction.
+    private struct AlphaBetaFilter {
+        // Estimates
+        var x: Double = 0      // heading (deg)
+        var v: Double = 0      // angular velocity (deg/s)
+        // Gains
+        var alpha: Double      // typically ~0.6..0.85  (higher -> more responsive)
+        var beta: Double       // typically ~0.1..0.5   (velocity gain, scaled by dt)
+        // Time
+        private var lastT: Date?
+
+        init(alpha: Double, beta: Double) {
+            self.alpha = alpha.clamped(to: 0.01...0.99)
+            self.beta  = beta.clamped(to: 0.01...1.0)
+        }
+
+        mutating func reset(to measurement: Double, now: Date) {
+            x = measurement
+            v = 0
+            lastT = now
+        }
+
+        mutating func update(measurement z: Double, now: Date) {
+            let t = now
+            let dt = max(0.005, min(0.1, (lastT.map { t.timeIntervalSince($0) } ?? 0.02)))
+            lastT = t
+
+            // Predict
+            let xPred = x + v * dt
+            let vPred = v
+
+            // Innovate
+            let r = z - xPred
+
+            // Update
+            x = xPred + alpha * r
+            v = vPred + (beta * r) / dt
+        }
+
+        func predict(leadSeconds: TimeInterval) -> Double { x + v * leadSeconds }
+    }
+
     private struct BehaviorState {
         var idleBehavior: IdleBehavior
         var leftGesture: LeftHandGesture = .down
         var rightGesture: RightHandGesture = .down
-        var manualHeading: Double?
-        var manualOverride = false
-        var trackingHeading: Double?
-        var lastPersonDetection: Date?
-        var currentHeading: Double = 0
-        var lastScheduledHeading: Double = 0
+
+        // Orientation state
+        var currentContext: OrientationContext = .search
+        var desiredCameraHeading: Double = 0          // single source of truth
+
+        // Head/body internal targets
         var bodyTarget: Double = 0
         var headTarget: Double = 0
-        var desiredHeading: Double = 0
-        var headJitterOffset: Double = 0
-        var currentContext: OrientationContext = .search
-        var patrolState = PatrolState()
 
-        private(set) var focusStart: Date?
-        var faceHeading: Double?
-        var faceOffset: Double?
+        // Manual override
+        var manualHeading: Double?
+        var manualOverride = false
 
-        mutating func focus(on heading: Double, now: Date) {
-            trackingHeading = heading
+        // Patrol
+        var patrol = PatrolState()
+
+        // Tracking
+        var lastPersonDetection: Date?
+        var focusStart: Date?
+        var faceOffset: Double?                       // last normalized offset [-1, 1]
+        var tracker: AlphaBetaFilter?                 // α‑β filter instance
+        var headJitterOffset: Double = 0              // small search jitter (deg)
+
+        mutating func focus(now: Date) {
             lastPersonDetection = now
             focusStart = focusStart ?? now
-            faceHeading = heading
         }
 
         mutating func clearFocus() {
-            trackingHeading = nil
             lastPersonDetection = nil
             focusStart = nil
-            faceHeading = nil
             faceOffset = nil
+            tracker = nil
         }
 
-        func personFocused(for now: Date, longerThan duration: TimeInterval) -> Bool {
-            guard let start = focusStart else { return false }
-            return now.timeIntervalSince(start) >= duration
+        func personStillHeld(now: Date, hold: TimeInterval) -> Bool {
+            guard let last = lastPersonDetection else { return false }
+            return now.timeIntervalSince(last) <= hold
         }
     }
-    
+
+    // MARK: - Instance wiring
+
     private let configuration: FigurineConfiguration
     private let telemetry: TelemetryLogger
     private let leftHandChannel: ServoChannel
     private let rightHandChannel: ServoChannel
     private let headChannel: ServoChannel
     private let bodyChannel: ServoChannel
+
     private let workerQueue = DispatchQueue(label: "RoboSanta.StateMachine", qos: .userInitiated)
     private let workerQueueKey = DispatchSpecificKey<Void>()
-    
+
     private var pendingEvents: [Event] = []
     private var behavior: BehaviorState
     private var pose = FigurinePose(bodyAngle: 0, headAngle: 0, leftHand: 0, rightHand: 0)
@@ -235,7 +290,13 @@ final class StateMachine {
     private var idlePhase: Double = 0
     private var leftIsWaving = false
     private var isRunning = false
-    
+
+    // Tracking tuning (derived from config, set when starting)
+    private var gatingDegrees: Double = 18           // max measurement jump accepted
+    private var deadbandDegrees: Double = 2.4        // ignore tiny errors
+    private let predictionLead: TimeInterval = 0.25  // small look‑ahead
+    private var alphaBeta: (alpha: Double, beta: Double) = (0.7, 0.25)
+
     init(configuration: FigurineConfiguration = .default, telemetry: TelemetryLogger = .shared) {
         self.configuration = configuration
         self.telemetry = telemetry
@@ -244,6 +305,7 @@ final class StateMachine {
         self.rightHandChannel = ServoChannel(configuration: configuration.rightHand)
         self.headChannel = ServoChannel(configuration: configuration.head)
         self.bodyChannel = ServoChannel(configuration: configuration.body)
+
         let telemetry: (String, [String: CustomStringConvertible]) -> Void = { [weak self] event, values in
             self?.logEvent(event, values: values)
         }
@@ -251,10 +313,12 @@ final class StateMachine {
         rightHandChannel.setTelemetryLogger(telemetry)
         headChannel.setTelemetryLogger(telemetry)
         bodyChannel.setTelemetryLogger(telemetry)
+
         workerQueue.setSpecific(key: workerQueueKey, value: ())
         configureInitialPatrolState(now: Date())
+        deriveTrackingTuning()
     }
-    
+
     deinit {
         let task: Task<Void, Never>? = syncOnWorkerQueue {
             let runningTask = loopTask
@@ -268,7 +332,7 @@ final class StateMachine {
             teardownChannelsLocked()
         }
     }
-    
+
     func start() async throws {
         var thrownError: Error?
         syncOnWorkerQueue {
@@ -281,12 +345,13 @@ final class StateMachine {
                 try headChannel.open(timeout: configuration.attachmentTimeout)
                 try leftHandChannel.open(timeout: configuration.attachmentTimeout)
                 try rightHandChannel.open(timeout: configuration.attachmentTimeout)
+
                 isRunning = true
                 lastUpdate = Date()
                 updatePose(now: lastUpdate, deltaTime: 0)
                 applyPose()
-                let task = Task { await self.runLoop() }
-                loopTask = task
+
+                loopTask = Task { await self.runLoop() }
             } catch {
                 thrownError = error
                 teardownChannelsLocked()
@@ -294,7 +359,7 @@ final class StateMachine {
         }
         if let error = thrownError { throw error }
     }
-    
+
     func stop() async {
         let task: Task<Void, Never>? = syncOnWorkerQueue {
             guard isRunning else { return nil }
@@ -304,9 +369,8 @@ final class StateMachine {
             return runningTask
         }
         task?.cancel()
-        if let task {
-            await task.value
-        }
+        if let task { await task.value }
+
         syncOnWorkerQueue {
             pendingEvents.removeAll(keepingCapacity: true)
             leftIsWaving = false
@@ -315,7 +379,7 @@ final class StateMachine {
             teardownChannelsLocked()
         }
     }
-    
+
     func send(_ event: Event) {
         workerQueue.async { [weak self] in
             guard let self else { return }
@@ -323,15 +387,12 @@ final class StateMachine {
             print("[event] \(event)")
         }
     }
-    
-    func currentPose() -> FigurinePose {
-        syncOnWorkerQueue { pose }
-    }
-    
-    func cameraHeading() -> Double {
-        syncOnWorkerQueue { pose.cameraHeading }
-    }
-    
+
+    func currentPose() -> FigurinePose { syncOnWorkerQueue { pose } }
+    func cameraHeading() -> Double { syncOnWorkerQueue { pose.cameraHeading } }
+
+    // MARK: - Loop
+
     private func runLoop() async {
         let nanos = UInt64(configuration.loopInterval * 1_000_000_000)
         while true {
@@ -351,11 +412,14 @@ final class StateMachine {
             try? await Task.sleep(nanoseconds: nanos)
         }
     }
-    
+
+    // MARK: - Event handling
+
     private func processEvents(now: Date) {
         guard !pendingEvents.isEmpty else { return }
         let events = pendingEvents
         pendingEvents.removeAll(keepingCapacity: true)
+
         for event in events {
             switch event {
             case .idle:
@@ -367,223 +431,294 @@ final class StateMachine {
                 behavior.idleBehavior = configuration.idleBehavior
                 configureInitialPatrolState(now: now)
                 logState("mode.idle")
+
             case .aimCamera(let angle):
                 behavior.manualOverride = true
                 behavior.manualHeading = clampCamera(angle)
-                logState("manual.target", values: ["angle": angle])
+                behavior.currentContext = .manual
+                logState("mode.manual", values: ["target": behavior.manualHeading ?? 0])
+
             case .clearTarget:
                 behavior.manualOverride = false
                 behavior.manualHeading = nil
+                logState("manual.clear")
+
             case .setLeftHand(let gesture):
-                let wasWave = leftIsWaving
+                let wasWaving = leftIsWaving
                 behavior.leftGesture = gesture
                 if case .wave = gesture {
-                    if !wasWave { leftWavePhase = 0 }
+                    if !wasWaving { leftWavePhase = 0 }
                     leftIsWaving = true
-                } else {
-                    leftIsWaving = false
-                }
+                } else { leftIsWaving = false }
+
             case .setRightHand(let gesture):
                 behavior.rightGesture = gesture
+
             case .setIdleBehavior(let newBehavior):
                 behavior.idleBehavior = newBehavior
                 idlePhase = 0
                 configureInitialPatrolState(now: now)
+                logState("idle.behavior", values: ["kind": "\(newBehavior)"])
+
             case .personDetected(let offset):
+                // Update tracking from a single normalized horizontal offset.
                 updateTrackingHeading(offset: offset, now: now, currentHeading: pose.cameraHeading)
+
             case .personLost:
-                behavior.clearFocus()
-                logEvent("tracking.lost", values: [:] as [String: CustomStringConvertible])
+                behavior.lastPersonDetection = nil
+                logEvent("tracking.lost")
                 logState("tracking.lost")
             }
         }
     }
-    
+
+    // MARK: - Core update
+
     private func updatePose(now: Date, deltaTime: TimeInterval) {
-        let (desiredHeading, context) = desiredHeading(now: now, deltaTime: deltaTime)
-        if orientationNeedsUpdate(for: desiredHeading, context: context) {
-            scheduleOrientationChange(to: desiredHeading, context: context, now: now)
-        }
-        updateHeadAndBodyTargets(deltaTime: deltaTime)
+        // Decide desired absolute camera heading and context.
+        decideDesiredHeading(now: now, deltaTime: deltaTime)
+
+        // Compute head/body targets from desired camera heading with decoupled filters.
+        let params = orientationParameters(for: behavior.currentContext)
+
+        // 1) Body slowly follows desired camera heading (LPF).
+        let bodyDemand = clampBody(behavior.desiredCameraHeading)
+        behavior.bodyTarget = clampBody(behavior.bodyTarget + (bodyDemand - behavior.bodyTarget) * params.bodyFollowRate.clamped(to: 0...1))
+
+        // 2) Head leads: aim at what's left after body contribution (+ optional search jitter).
+        let jitter = (behavior.currentContext == .search) ? behavior.headJitterOffset : 0
+        let headDemandRaw = clampHead(behavior.desiredCameraHeading - behavior.bodyTarget + jitter)
+        behavior.headTarget = clampHead(behavior.headTarget + (headDemandRaw - behavior.headTarget) * params.headFollowRate.clamped(to: 0...1))
+
+        // 3) Publish pose
         pose.bodyAngle = behavior.bodyTarget
         pose.headAngle = behavior.headTarget
-        pose.leftHand = leftHandValue(deltaTime: deltaTime)
+        pose.leftHand  = leftHandValue(deltaTime: deltaTime)
         pose.rightHand = rightHandValue()
-    }
-    
-    private func idleHeading(now: Date, deltaTime: TimeInterval) -> Double {
-        switch behavior.idleBehavior {
-        case .none:
-            return 0
-        case .sweep(let range, let period):
-            let span = max(period, 0.1)
-            idlePhase = (idlePhase + deltaTime * (2 * .pi / span)).truncatingRemainder(dividingBy: 2 * .pi)
-            let center = range.midPoint
-            let amplitude = range.span / 2
-            return center + sin(idlePhase) * amplitude
-        case .patrol(let config):
-            guard !config.headings.isEmpty else { return 0 }
-            var state = behavior.patrolState
-            if now >= state.nextSwitch {
-                state.headingIndex = (state.headingIndex + 1) % config.headings.count
-                state.startHeading = state.currentHeading
-                state.targetHeading = config.headings[state.headingIndex]
-                state.transitionStart = now
-                state.transitionEnd = now + randomInterval(in: config.transitionDurationRange)
-                state.nextSwitch = state.transitionEnd + randomInterval(in: config.intervalRange)
-                logEvent("patrol.transition", values: [
-                    "target": state.targetHeading,
-                    "duration": state.transitionEnd.timeIntervalSince(state.transitionStart),
-                    "nextSwitch": state.nextSwitch.timeIntervalSince1970
-                ])
-                logState("patrol.target", values: ["heading": state.targetHeading])
-            }
-            if state.transitionEnd > state.transitionStart, now < state.transitionEnd {
-                let duration = state.transitionEnd.timeIntervalSince(state.transitionStart)
-                let progress = duration > 0 ? (now.timeIntervalSince(state.transitionStart) / duration) : 1
-                state.currentHeading = lerp(state.startHeading, state.targetHeading, t: progress.clamped(to: 0...1))
-            } else {
-                state.currentHeading = state.targetHeading
-            }
-            behavior.patrolState = state
-            return state.currentHeading
+
+        // Occasional telemetry of full pose & estimates (lightweight)
+        if Int(now.timeIntervalSince1970 * 5) % 5 == 0 { // ~1 Hz
+            logEvent("loop.pose", values: [
+                "ctx": contextName(behavior.currentContext),
+                "cam.des": behavior.desiredCameraHeading,
+                "body.tgt": behavior.bodyTarget,
+                "head.tgt": behavior.headTarget
+            ])
         }
     }
-    
-    private func desiredHeading(now: Date, deltaTime: TimeInterval) -> (Double, OrientationContext) {
+
+    /// Decide desired camera heading based on manual override, tracking hold, or idle search.
+    private func decideDesiredHeading(now: Date, deltaTime: TimeInterval) {
+        // Manual always wins
         if behavior.manualOverride, let manual = behavior.manualHeading {
-            return (clampCamera(manual), .manual)
+            behavior.currentContext = .manual
+            behavior.desiredCameraHeading = clampCamera(manual)
+            return
         }
-        if let lastSeen = behavior.lastPersonDetection,
-           now.timeIntervalSince(lastSeen) <= configuration.trackingBehavior.holdDuration,
-           let tracked = behavior.trackingHeading ?? behavior.faceHeading {
-            return (tracked, .tracking)
+
+        // Tracking: if we recently saw a face, keep following predicted track
+        if behavior.personStillHeld(now: now, hold: configuration.trackingBehavior.holdDuration),
+           let tracker = behavior.tracker {
+            behavior.currentContext = .tracking
+
+            // Predict slightly ahead to reduce latency (keeps face inside frame)
+            var predicted = tracker.predict(leadSeconds: predictionLead)
+            predicted = clampCamera(predicted)
+
+            // Apply small deadband on the *visual* error if we still have a measured offset.
+            if let off = behavior.faceOffset {
+                let needed = abs(off) * (configuration.trackingBehavior.cameraHorizontalFOV / 2)
+                if needed < deadbandDegrees {
+                    // within deadband: don't chase noise; keep previous desired heading
+                    // (but still let body slowly pick up because desired is already close)
+                } else {
+                    behavior.desiredCameraHeading = predicted
+                }
+            } else {
+                behavior.desiredCameraHeading = predicted
+            }
+            return
         } else {
+            // If hold expired, drop focus entirely
             if let last = behavior.lastPersonDetection,
                now.timeIntervalSince(last) > configuration.trackingBehavior.holdDuration {
                 behavior.clearFocus()
+                logState("tracking.clear")
             }
         }
-        return (idleHeading(now: now, deltaTime: deltaTime), .search)
+
+        // Search / idle
+        behavior.currentContext = .search
+        behavior.desiredCameraHeading = clampCamera(idleHeading(now: now, deltaTime: deltaTime))
     }
-    
-    private func orientationNeedsUpdate(for heading: Double, context: OrientationContext) -> Bool {
-        let threshold = 0.5
-        if abs(heading - behavior.lastScheduledHeading) > threshold { return true }
-        if behavior.currentContext != context { return true }
-        return false
-    }
-    
-    private func scheduleOrientationChange(to heading: Double, context: OrientationContext, now: Date) {
-        let limitedHeading = clampCamera(heading)
-        behavior.desiredHeading = limitedHeading
-        let previousContext = behavior.currentContext
-        behavior.currentContext = context
-        behavior.lastScheduledHeading = limitedHeading
-        let params = orientationParameters(for: context)
-        behavior.headJitterOffset = randomValue(in: params.headJitter) * 0.1
-        logEvent("orientation.schedule", values: [
-            "context": contextName(context),
-            "heading": limitedHeading
-        ])
-        if previousContext != context {
-            switch context {
-            case .tracking:
-                logState("mode.tracking")
-            case .search:
-                logState("mode.search")
-            case .manual:
-                logState("mode.manual")
+
+    // MARK: - Idle/search behaviors
+
+    private func idleHeading(now: Date, deltaTime: TimeInterval) -> Double {
+        switch behavior.idleBehavior {
+        case .none:
+            behavior.headJitterOffset = 0
+            return 0
+
+        case .sweep(let range, let period):
+            let span = max(period, 0.1)
+            idlePhase = (idlePhase + deltaTime * (2 * .pi / span)).truncatingRemainder(dividingBy: 2 * .pi)
+            behavior.headJitterOffset = 0.0
+            let center = range.midPoint
+            let amplitude = range.span / 2
+            return center + sin(idlePhase) * amplitude
+
+        case .patrol(let cfg):
+            guard !cfg.headings.isEmpty else { return 0 }
+            var ps = behavior.patrol
+
+            if now >= ps.nextSwitch {
+                ps.headingIndex = (ps.headingIndex + 1) % cfg.headings.count
+                ps.startHeading = ps.currentHeading
+                ps.targetHeading = cfg.headings[ps.headingIndex]
+                ps.transitionStart = now
+                ps.transitionEnd = now + randomInterval(in: cfg.transitionDurationRange)
+                ps.nextSwitch = ps.transitionEnd + randomInterval(in: cfg.intervalRange)
+
+                // Randomize tiny search jitter for the head while patrolling
+                behavior.headJitterOffset = randomValue(in: cfg.headJitterRange) * 0.1
+
+                logEvent("patrol.transition", values: [
+                    "target": ps.targetHeading,
+                    "duration": ps.transitionEnd.timeIntervalSince(ps.transitionStart),
+                    "next": ps.nextSwitch.timeIntervalSince1970
+                ])
+                logState("patrol.target", values: ["heading": ps.targetHeading])
             }
+
+            if ps.transitionEnd > ps.transitionStart, now < ps.transitionEnd {
+                let dur = max(0.001, ps.transitionEnd.timeIntervalSince(ps.transitionStart))
+                let t = (now.timeIntervalSince(ps.transitionStart) / dur).clamped(to: 0...1)
+                ps.currentHeading = lerp(ps.startHeading, ps.targetHeading, t: t)
+            } else {
+                ps.currentHeading = ps.targetHeading
+            }
+
+            behavior.patrol = ps
+            return ps.currentHeading
         }
     }
-    
-    private func updateHeadAndBodyTargets(deltaTime: TimeInterval) {
-        let desired = behavior.desiredHeading
-        let context = behavior.currentContext
-        let params = orientationParameters(for: context)
-        let bodyReference = behavior.bodyTarget
-        let rawHeadDemand = clampHead(desired - bodyReference)
-        let jitter = context == .search ? behavior.headJitterOffset : 0
-        let headDemand = clampHead(rawHeadDemand + jitter)
-        let headRate = params.headFollowRate.clamped(to: 0.1...1.0)
-        behavior.headTarget = clampHead(behavior.headTarget + (headDemand - behavior.headTarget) * headRate)
-        let bodyDemand = clampBody(desired - behavior.headTarget)
-        let bodyRate = params.bodyFollowRate.clamped(to: 0...1.0)
-        behavior.bodyTarget = clampBody(behavior.bodyTarget + (bodyDemand - behavior.bodyTarget) * bodyRate)
+
+    // MARK: - Tracking update from CameraManager
+
+    private func updateTrackingHeading(offset: Double, now: Date, currentHeading: Double) {
+        let cfg = configuration.trackingBehavior
+        let halfFOV = max(1.0, cfg.cameraHorizontalFOV / 2)
+        let measured = clampCamera(currentHeading + offset * halfFOV) // absolute degrees
+
+        // Initialize or update α‑β filter (gated).
+        if behavior.tracker == nil {
+            // Map smoothing ∈ [0,0.95] → α,β (empirical: α=[0.6..0.85], β related)
+            let alpha = max(0.4, min(0.9, 1.0 - cfg.predictionSmoothing)) // 0.7 by default
+            let beta  = max(0.1, min(0.6, alpha * alpha * 0.5))           // ~0.245 by default
+            behavior.tracker = AlphaBetaFilter(alpha: alpha, beta: beta)
+            behavior.tracker?.reset(to: measured, now: now)
+            deriveTrackingTuning() // refresh deadband/gating from FOV
+            logEvent("tracking.init", values: ["meas": measured, "alpha": alpha, "beta": beta])
+            logState("tracking.init", values: ["heading": measured])
+        } else {
+            // Gating: reject sudden large jumps (likely another face)
+            let predicted = behavior.tracker!.predict(leadSeconds: 0)
+            let jump = abs(angleDiff(predicted, measured))
+            if jump > gatingDegrees {
+                logEvent("tracking.reject", values: ["meas": measured, "pred": predicted, "jump": jump])
+                // keep previous track; do not reset last detection time here (no "hold" refresh)
+            } else {
+                behavior.tracker?.update(measurement: measured, now: now)
+                behavior.faceOffset = offset
+                behavior.focus(now: now)
+                let est = behavior.tracker!.x
+                let vel = behavior.tracker!.v
+                let pred = behavior.tracker!.predict(leadSeconds: predictionLead)
+                logEvent("tracking.update", values: [
+                    "offset": offset,
+                    "meas": measured,
+                    "est": est,
+                    "vel": vel,
+                    "pred": pred
+                ])
+                logState("tracking.face", values: ["meas": measured, "pred": pred, "off": offset])
+            }
+        }
+
+        // If inside hard deadband, do not move desired heading this tick (but keep tracking alive).
+        if abs(offset) < cfg.deadband {
+            behavior.focus(now: now)
+            return
+        }
+
+        // Move desired heading toward a short‑lead prediction now; apply clamp later in decide().
+        if let tracker = behavior.tracker {
+            behavior.desiredCameraHeading = clampCamera(tracker.predict(leadSeconds: predictionLead))
+            behavior.currentContext = .tracking
+        } else {
+            behavior.desiredCameraHeading = measured
+            behavior.currentContext = .tracking
+        }
     }
-    
-    private func orientationParameters(for context: OrientationContext) -> (headFollowRate: Double, bodyFollowRate: Double, headJitter: ClosedRange<Double>) {
+
+    // MARK: - Parameterization
+
+    private func orientationParameters(for context: OrientationContext)
+        -> (headFollowRate: Double, bodyFollowRate: Double)
+    {
         switch context {
         case .search:
-            if case .patrol(let config) = behavior.idleBehavior {
-                return (config.headFollowRate, config.bodyFollowRate, config.headJitterRange)
+            if case .patrol(let cfg) = behavior.idleBehavior {
+                return (cfg.headFollowRate.clamped(to: 0.05...1.0),
+                        cfg.bodyFollowRate.clamped(to: 0.0...1.0))
             }
-            return (0.5, 0.15, 0...0)
+            return (0.5, 0.15)
+
         case .tracking, .manual:
-            let tracking = configuration.trackingBehavior
-            return (tracking.headFollowRate, tracking.bodyFollowRate, 0...0)
+            let tr = configuration.trackingBehavior
+            return (tr.headFollowRate.clamped(to: 0.05...1.0),
+                    tr.bodyFollowRate.clamped(to: 0.0...1.0))
         }
     }
-    
-    private func updateTrackingHeading(offset: Double, now: Date, currentHeading: Double) {
-        let config = configuration.trackingBehavior
-        let fov = max(1, config.cameraHorizontalFOV)
-        let absolute = clampCamera(currentHeading + offset * (fov / 2))
-        let smoothing = config.predictionSmoothing.clamped(to: 0...0.95)
-        let shouldUpdate = abs(offset) >= config.deadband || behavior.faceHeading == nil
-        if shouldUpdate {
-            if let previous = behavior.faceHeading {
-                behavior.faceHeading = previous + (absolute - previous) * (1 - smoothing)
-            } else {
-                behavior.faceHeading = absolute
-            }
-        }
-        behavior.faceOffset = offset
-        if let heading = behavior.faceHeading {
-            behavior.trackingHeading = heading
-            behavior.focus(on: heading, now: now)
-            logEvent("tracking.update", values: [
-                "offset": offset,
-                "heading": heading
-            ])
-            logState("tracking.face", values: ["heading": heading, "offset": offset])
-        }
+
+    private func deriveTrackingTuning() {
+        let fov = max(20.0, configuration.trackingBehavior.cameraHorizontalFOV)
+        deadbandDegrees = configuration.trackingBehavior.deadband
+            .clamped(to: 0...0.5) * (fov / 2.0)
+        gatingDegrees = max(8.0, min(fov * 0.35, fov / 2.0)) // ~1/3 FOV, bounded
     }
-    
+
+    // MARK: - Initial patrol
+
     private func configureInitialPatrolState(now: Date) {
-        if case .patrol(let config) = behavior.idleBehavior, !config.headings.isEmpty {
-            let index = Int.random(in: 0..<config.headings.count)
-            behavior.patrolState.headingIndex = index
-            let heading = config.headings[index]
-            behavior.patrolState.currentHeading = heading
-            behavior.patrolState.startHeading = heading
-            behavior.patrolState.targetHeading = heading
-            behavior.patrolState.transitionStart = now
-            behavior.patrolState.transitionEnd = now
-            behavior.patrolState.nextSwitch = now + randomInterval(in: config.intervalRange)
-            behavior.bodyTarget = heading
-            behavior.headTarget = heading
-            behavior.desiredHeading = heading
-            logEvent("patrol.init", values: [
-                "heading": heading,
-                "nextSwitch": behavior.patrolState.nextSwitch.timeIntervalSince1970
-            ])
+        if case .patrol(let cfg) = behavior.idleBehavior, !cfg.headings.isEmpty {
+            let index = Int.random(in: 0..<cfg.headings.count)
+            let heading = cfg.headings[index]
+            behavior.patrol = PatrolState(
+                headingIndex: index,
+                currentHeading: heading,
+                startHeading: heading,
+                targetHeading: heading,
+                nextSwitch: now + randomInterval(in: cfg.intervalRange),
+                transitionStart: now,
+                transitionEnd: now
+            )
+            behavior.bodyTarget = clampBody(heading)
+            behavior.headTarget = 0
+            behavior.desiredCameraHeading = clampCamera(heading)
+            logEvent("patrol.init", values: ["heading": heading, "next": behavior.patrol.nextSwitch.timeIntervalSince1970])
             logState("patrol.target", values: ["heading": heading])
         } else {
-            behavior.patrolState.headingIndex = 0
-            behavior.patrolState.currentHeading = 0
-            behavior.patrolState.startHeading = 0
-            behavior.patrolState.targetHeading = 0
-            behavior.patrolState.transitionStart = now
-            behavior.patrolState.transitionEnd = now
-            behavior.patrolState.nextSwitch = now
+            behavior.patrol = PatrolState()
             behavior.bodyTarget = 0
             behavior.headTarget = 0
-            behavior.desiredHeading = 0
+            behavior.desiredCameraHeading = 0
         }
     }
-    
+
+    // MARK: - Hands
+
     private func leftHandValue(deltaTime: TimeInterval) -> Double {
         switch behavior.leftGesture {
         case .down:
@@ -592,7 +727,8 @@ final class StateMachine {
             return configuration.leftHand.logicalRange.upperBound
         case .wave(let amplitude, let speed):
             let safeSpeed = max(speed, 0.2)
-            leftWavePhase = (leftWavePhase + deltaTime * safeSpeed * 2 * .pi).truncatingRemainder(dividingBy: 2 * .pi)
+            leftWavePhase = (leftWavePhase + deltaTime * safeSpeed * 2 * .pi)
+                .truncatingRemainder(dividingBy: 2 * .pi)
             let span = min(amplitude, configuration.leftHand.logicalRange.span)
             let top = configuration.leftHand.logicalRange.upperBound
             let bottom = max(configuration.leftHand.logicalRange.lowerBound, top - span)
@@ -600,66 +736,53 @@ final class StateMachine {
             return bottom + normalized * (top - bottom)
         }
     }
-    
+
     private func rightHandValue() -> Double {
-        let range = configuration.rightHand.logicalRange
+        let r = configuration.rightHand.logicalRange
         switch behavior.rightGesture {
-        case .down:
-            return range.lowerBound
-        case .point:
-            return range.lowerBound + range.span * 0.5
-        case .emphasise:
-            return range.upperBound
+        case .down:      return r.lowerBound
+        case .point:     return r.lowerBound + r.span * 0.5
+        case .emphasise: return r.upperBound
         }
     }
-    
+
+    // MARK: - Hardware I/O
+
     private func applyPose() {
         bodyChannel.move(toLogical: pose.bodyAngle)
         headChannel.move(toLogical: pose.headAngle)
         leftHandChannel.move(toLogical: pose.leftHand)
         rightHandChannel.move(toLogical: pose.rightHand)
     }
-    
-    private func clampCamera(_ heading: Double) -> Double {
-        configuration.cameraRange.clamp(heading)
-    }
-    
-    private func clampBody(_ angle: Double) -> Double {
-        configuration.body.logicalRange.clamp(angle)
-    }
-    
-    private func clampHead(_ angle: Double) -> Double {
-        configuration.head.logicalRange.clamp(angle)
-    }
+
+    // MARK: - Helpers
+
+    private func clampCamera(_ heading: Double) -> Double { configuration.cameraRange.clamp(heading) }
+    private func clampBody(_ angle: Double) -> Double { configuration.body.logicalRange.clamp(angle) }
+    private func clampHead(_ angle: Double) -> Double { configuration.head.logicalRange.clamp(angle) }
+
+    /// Shortest signed difference a→b (degrees).
+    private func angleDiff(_ a: Double, _ b: Double) -> Double { (b - a) }
 
     private func syncOnWorkerQueue<T>(_ work: () -> T) -> T {
-        if DispatchQueue.getSpecific(key: workerQueueKey) != nil {
-            return work()
-        }
+        if DispatchQueue.getSpecific(key: workerQueueKey) != nil { return work() }
         return workerQueue.sync(execute: work)
     }
-    
+
     private func telemetryPayload(from values: [String: CustomStringConvertible]) -> [String: Any]? {
         var payload: [String: Any] = ["ts": Date().timeIntervalSince1970]
         for (key, value) in values {
-            if let double = value as? Double {
-                payload[key] = double
-            } else if let int = value as? Int {
-                payload[key] = int
-            } else if let bool = value as? Bool {
-                payload[key] = bool
-            } else {
-                payload[key] = value.description
-            }
+            if let d = value as? Double { payload[key] = d }
+            else if let i = value as? Int { payload[key] = i }
+            else if let b = value as? Bool { payload[key] = b }
+            else { payload[key] = value.description }
         }
         return payload
     }
-    
+
     private func logEvent(_ type: String, values: [String: CustomStringConvertible] = [:]) {
         var payload: [String: CustomStringConvertible] = ["type": type]
-        for (key, value) in values {
-            payload[key] = value
-        }
+        values.forEach { payload[$0] = $1 }
         if let common = telemetryPayload(from: payload), let json = telemetry.serialize(common) {
             telemetry.write(line: json)
         }
@@ -673,13 +796,9 @@ final class StateMachine {
         }
         print(message)
     }
-    
-    private func contextName(_ context: OrientationContext) -> String {
-        switch context {
-        case .manual: return "manual"
-        case .tracking: return "tracking"
-        case .search: return "search"
-        }
+
+    private func contextName(_ ctx: OrientationContext) -> String {
+        switch ctx { case .manual: return "manual"; case .tracking: return "tracking"; case .search: return "search" }
     }
 
     private func teardownChannelsLocked() {
@@ -690,6 +809,8 @@ final class StateMachine {
     }
 }
 
+// MARK: - ServoChannel (unchanged behavior)
+
 private final class ServoChannel {
     private let configuration: StateMachine.ServoChannelConfiguration
     private let servo: RCServo = RCServo()
@@ -697,16 +818,16 @@ private final class ServoChannel {
     private var currentNormalized: Double?
     private var isOpen = false
     private var telemetryLogger: ((String, [String: CustomStringConvertible]) -> Void)?
-    
+
     init(configuration: StateMachine.ServoChannelConfiguration) {
         self.configuration = configuration
         setupHandlers()
     }
-    
+
     func setTelemetryLogger(_ logger: @escaping (String, [String: CustomStringConvertible]) -> Void) {
         telemetryLogger = logger
     }
-    
+
     func open(timeout: TimeInterval) throws {
         guard !isOpen else { return }
         try configure("setChannel") { try servo.setChannel(configuration.channel) }
@@ -743,11 +864,9 @@ private final class ServoChannel {
             throw error
         }
     }
-    
-    func move(toLogical value: Double) {
-        move(toLogical: value, force: false)
-    }
-    
+
+    func move(toLogical value: Double) { move(toLogical: value, force: false) }
+
     func shutdown() {
         guard isOpen else { return }
         isOpen = false
@@ -755,7 +874,7 @@ private final class ServoChannel {
         perform("close") { try servo.close() }
         attached = false
     }
-    
+
     private func move(toLogical value: Double, force: Bool) {
         guard isOpen || force else { return }
         let normalized = normalizedValue(for: value)
@@ -764,19 +883,17 @@ private final class ServoChannel {
         perform("setTargetPosition") { try servo.setTargetPosition(normalized) }
         logTelemetry("servo.command", values: ["target": normalized])
     }
-    
+
     private func normalizedValue(for logical: Double) -> Double {
         let range = configuration.logicalRange
         let clamped = range.clamp(logical)
         let normalized = (clamped - range.lowerBound) / range.span
         switch configuration.orientation {
-        case .normal:
-            return normalized
-        case .reversed:
-            return 1 - normalized
+        case .normal:   return normalized
+        case .reversed: return 1 - normalized
         }
     }
-    
+
     private func waitForAttachment(timeout: TimeInterval) throws {
         let start = Date()
         while !attached {
@@ -786,12 +903,12 @@ private final class ServoChannel {
             Thread.sleep(forTimeInterval: 0.01)
         }
     }
-    
+
     private func setupHandlers() {
-_ = servo.error.addHandler { [weak self] sender, data in
-    guard let self else { return }
-    self.logTelemetry("servo.error", values: ["code": data.code.rawValue, "description": data.description])
-}
+        _ = servo.error.addHandler { [weak self] sender, data in
+            guard let self else { return }
+            self.logTelemetry("servo.error", values: ["code": data.code.rawValue, "description": data.description])
+        }
         _ = servo.attach.addHandler { [weak self] sender in
             guard let self else { return }
             self.attached = true
@@ -816,47 +933,38 @@ _ = servo.error.addHandler { [weak self] sender, data in
     }
 
     private func configure(_ step: String, _ action: () throws -> Void) throws {
-        do {
-            try action()
-        } catch let err as PhidgetError {
+        do { try action() }
+        catch let err as PhidgetError {
             outputError(errorDescription: "[\(configuration.name)] \(step): \(err.description)", errorCode: err.errorCode.rawValue)
             throw err
-        } catch {
-            print(error)
-            throw error
-        }
+        } catch { print(error); throw error }
     }
-    
+
     private func perform(_ step: String, _ action: () throws -> Void) {
-        do {
-            try action()
-        } catch let err as PhidgetError {
+        do { try action() }
+        catch let err as PhidgetError {
             outputError(errorDescription: "[\(configuration.name)] \(step): \(err.description)", errorCode: err.errorCode.rawValue)
             logTelemetry("servo.error", values: ["step": step, "code": err.errorCode.rawValue, "description": err.description])
-        } catch {
-            print(error)
-        }
+        } catch { print(error) }
     }
-    
+
     private func clamp(_ value: Double, min: Double?, max: Double?) -> Double {
-        var lower = min
-        var upper = max
-        if let l = lower, let u = upper, l > u {
-            lower = u
-            upper = l
-        }
+        var lower = min, upper = max
+        if let l = lower, let u = upper, l > u { lower = u; upper = l }
         var clamped = value
         if let lower { clamped = Swift.max(clamped, lower) }
         if let upper { clamped = Swift.min(clamped, upper) }
         return clamped
     }
-    
+
     private func logTelemetry(_ event: String, values: [String: CustomStringConvertible] = [:]) {
         var merged = values
         merged["servo"] = configuration.name
         telemetryLogger?(event, merged)
     }
 }
+
+// MARK: - Utils
 
 private func randomValue(in range: ClosedRange<Double>) -> Double {
     let lower = Swift.min(range.lowerBound, range.upperBound)
@@ -872,9 +980,7 @@ private func randomInterval(in range: ClosedRange<TimeInterval>) -> TimeInterval
     return Double.random(in: lower...upper)
 }
 
-private func lerp(_ start: Double, _ end: Double, t: Double) -> Double {
-    start + (end - start) * t
-}
+private func lerp(_ start: Double, _ end: Double, t: Double) -> Double { start + (end - start) * t }
 
 private extension Double {
     func clamped(to range: ClosedRange<Double>) -> Double {
@@ -885,7 +991,5 @@ private extension Double {
 private extension ClosedRange where Bound == Double {
     var span: Double { upperBound - lowerBound }
     var midPoint: Double { (lowerBound + upperBound) / 2 }
-    func clamp(_ value: Double) -> Double {
-        Swift.min(Swift.max(value, lowerBound), upperBound)
-    }
+    func clamp(_ value: Double) -> Double { Swift.min(Swift.max(value, lowerBound), upperBound) }
 }
