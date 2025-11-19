@@ -235,6 +235,8 @@ final class StateMachine {
     private var pendingEvents: [Event] = []
     private var behavior: BehaviorState
     private var pose = FigurinePose(bodyAngle: 0, headAngle: 0, leftHand: 0, rightHand: 0)
+    private var measuredBodyAngle: Double?
+    private var measuredHeadAngle: Double?
     private var loopTask: Task<Void, Never>?
     private var lastUpdate = Date()
     private var leftWavePhase: Double = 0
@@ -276,6 +278,14 @@ final class StateMachine {
         rightHandChannel.setTelemetryLogger(telemetry)
         headChannel.setTelemetryLogger(telemetry)
         bodyChannel.setTelemetryLogger(telemetry)
+        bodyChannel.setPositionObserver { [weak self] angle in
+            guard let self else { return }
+            self.workerQueue.async { self.measuredBodyAngle = angle }
+        }
+        headChannel.setPositionObserver { [weak self] angle in
+            guard let self else { return }
+            self.workerQueue.async { self.measuredHeadAngle = angle }
+        }
         workerQueue.setSpecific(key: workerQueueKey, value: ())
         configureInitialPatrolState(now: Date())
     }
@@ -348,7 +358,7 @@ final class StateMachine {
     }
     
     func currentPose() -> FigurinePose { syncOnWorkerQueue { pose } }
-    func cameraHeading() -> Double { syncOnWorkerQueue { pose.cameraHeading } }
+    func cameraHeading() -> Double { syncOnWorkerQueue { cameraHeadingEstimateLocked() } }
     
     private func runLoop() async {
         let nanos = UInt64(configuration.loopInterval * 1_000_000_000)
@@ -368,6 +378,13 @@ final class StateMachine {
             if !keepRunning || Task.isCancelled { break }
             try? await Task.sleep(nanoseconds: nanos)
         }
+    }
+    
+    private func cameraHeadingEstimateLocked() -> Double {
+        if let body = measuredBodyAngle, let head = measuredHeadAngle {
+            return clampCamera(body + head)
+        }
+        return pose.cameraHeading
     }
     
     private func processEvents(now: Date) {
@@ -424,7 +441,8 @@ final class StateMachine {
         }
 
         if let o = lastDetectedOffset {
-            updateTrackingHeading(offset: o, now: now, currentHeading: pose.cameraHeading)
+            let heading = cameraHeadingEstimateLocked()
+            updateTrackingHeading(offset: o, now: now, currentHeading: heading)
         }
     }
     
@@ -823,6 +841,7 @@ private final class ServoChannel {
     private var currentNormalized: Double?
     private var isOpen = false
     private var telemetryLogger: ((String, [String: CustomStringConvertible]) -> Void)?
+    private var positionObserver: ((Double) -> Void)?
     
     init(configuration: StateMachine.ServoChannelConfiguration) {
         self.configuration = configuration
@@ -831,6 +850,10 @@ private final class ServoChannel {
     
     func setTelemetryLogger(_ logger: @escaping (String, [String: CustomStringConvertible]) -> Void) {
         telemetryLogger = logger
+    }
+    
+    func setPositionObserver(_ observer: @escaping (Double) -> Void) {
+        positionObserver = observer
     }
     
     func open(timeout: TimeInterval) throws {
@@ -898,6 +921,18 @@ private final class ServoChannel {
         case .reversed: return 1 - normalized
         }
     }
+
+    private func logicalValue(forServoPosition normalized: Double) -> Double {
+        let clamped = normalized.clamped(to: 0...1)
+        let logicalNormalized: Double
+        switch configuration.orientation {
+        case .normal:
+            logicalNormalized = clamped
+        case .reversed:
+            logicalNormalized = 1 - clamped
+        }
+        return configuration.logicalRange.lowerBound + logicalNormalized * configuration.logicalRange.span
+    }
     
     private func waitForAttachment(timeout: TimeInterval) throws {
         let start = Date()
@@ -930,7 +965,9 @@ private final class ServoChannel {
             self?.logTelemetry("servo.velocity", values: ["value": velocity])
         }
         _ = servo.positionChange.addHandler { [weak self] _, position in
-            self?.logTelemetry("servo.position", values: ["value": position])
+            guard let self else { return }
+            self.positionObserver?(self.logicalValue(forServoPosition: position))
+            self.logTelemetry("servo.position", values: ["value": position])
         }
         _ = servo.targetPositionReached.addHandler { [weak self] _, position in
             self?.logTelemetry("servo.targetReached", values: ["value": position])
