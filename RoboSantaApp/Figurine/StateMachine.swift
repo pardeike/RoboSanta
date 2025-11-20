@@ -585,6 +585,40 @@ final class StateMachine {
         }
         newBody = clampBody(newBody)
 
+        // While tracking, gradually hand off head deflection to the body so the torso
+        // orients toward the subject without moving the camera off-target.
+        if context == .tracking {
+            let headDeflection = abs(newHead)
+            if headDeflection > 0.5 { // avoid tiny twitches
+                let cameraTarget = desired
+                let headRange = configuration.head.logicalRange
+                let bodyRange = configuration.body.logicalRange
+                let minBodyForCamera = max(bodyRange.lowerBound, cameraTarget - headRange.upperBound)
+                let maxBodyForCamera = min(bodyRange.upperBound, cameraTarget - headRange.lowerBound)
+                if minBodyForCamera <= maxBodyForCamera {
+                    let recenterRange = minBodyForCamera...maxBodyForCamera
+                    let preferredBody = recenterRange.clamp(cameraTarget)
+                    let recenterRate = (params.bodyFollowRate * 0.5).clamped(to: 0.02...0.5)
+                    var recenteredBody = newBody + (preferredBody - newBody) * recenterRate
+                    if deltaTime > 0 {
+                        recenteredBody = approach(current: newBody,
+                                                  target: recenteredBody,
+                                                  maxDelta: settings.bodyRateCapDegPerSec * deltaTime)
+                    }
+                    recenteredBody = clampBody(recenteredBody)
+                    let compensatedHead = clampHead(cameraTarget - recenteredBody)
+                    var recenteredHead = compensatedHead
+                    if deltaTime > 0 {
+                        recenteredHead = approach(current: newHead,
+                                                  target: compensatedHead,
+                                                  maxDelta: settings.headRateCapDegPerSec * deltaTime)
+                    }
+                    newBody = recenteredBody
+                    newHead = recenteredHead
+                }
+            }
+        }
+
         behavior.headTarget = newHead
         behavior.bodyTarget = newBody
     }
