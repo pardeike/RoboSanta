@@ -976,6 +976,23 @@ final class StateMachine {
     
     private func setLeftGesture(_ gesture: LeftHandGesture) {
         behavior.leftGesture = gesture
+        
+        // If manually requested to lower, interrupt autopilot
+        if case .down = gesture {
+            if behavior.leftHandAutoState != .lowered && behavior.leftHandAutoState != .lowering {
+                behavior.leftHandAutoState = .lowering
+                let minAngle = configuration.leftHand.logicalRange.lowerBound
+                setLeftHandTarget(angle: minAngle, speed: settings.leftHandLowerSpeed)
+                logState("leftHand.manualLower")
+            }
+        } else if case .up = gesture {
+            // Manual raise request
+            if behavior.leftHandAutoState == .lowered {
+                let maxAngle = configuration.leftHand.logicalRange.upperBound
+                setLeftHandTarget(angle: maxAngle, speed: settings.leftHandRaiseSpeed)
+                logState("leftHand.manualRaise")
+            }
+        }
     }
     
     private var resolvedLeftHandCooldownDuration: TimeInterval {
