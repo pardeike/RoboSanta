@@ -252,7 +252,7 @@ extension StateMachine.ServoChannelConfiguration {
             velocityLimit: 120,
             orientation: .normal,
             voltage: nil,
-            stallGuard: .defaultAngular
+            stallGuard: .angularHead
         )
     }
 
@@ -269,14 +269,24 @@ extension StateMachine.ServoChannelConfiguration {
             velocityLimit: 120,
             orientation: .normal,
             voltage: nil,
-            stallGuard: .defaultAngular
+            stallGuard: .angularBody
         )
     }
 }
 
 extension StateMachine.ServoChannelConfiguration.StallGuard {
     /// Default guard tuned for angular servos (head/body) to avoid endless pushing once settled near a limit.
-    static var defaultAngular: Self {
+    static var angularHead: Self {
+        .init(
+            tolerance: 2.0,
+            holdDuration: 0.3,
+            minMovement: 0.4,
+            backoff: 4.0
+        )
+    }
+
+    /// Body-specific guard with a slightly larger retreat to relieve load when binding at the extremes.
+    static var angularBody: Self {
         .init(
             tolerance: 2.0,
             holdDuration: 0.3,
