@@ -37,8 +37,8 @@ extension StateMachine {
         /// Typical: 10...50 deg.
         let maxJumpDeg: Double
 
-        /// Minimum spacing (deg) between unique patrol headings after clamping to the camera range.
-        /// Lower = allows very close waypoints (may duplicate); higher = prunes near-duplicates.
+        /// Minimum spacing (deg) between the two patrol extremes after clamping to the camera range.
+        /// Lower = allows nearly identical extremes (little motion); higher = collapses near-duplicates.
         /// Typical: 0.0005...0.01 deg.
         let patrolHeadingDedupEpsilon: Double
 
@@ -318,13 +318,13 @@ extension StateMachine.FigurineConfiguration {
 }
 
 extension StateMachine.IdleBehavior.PatrolConfiguration {
-    /// Default patrol path used while idle.
-    /// - `headings`: List of yaw headings (deg). Add/remove waypoints to change the arc.
+    /// Default patrol swing used while idle.
+    /// - `headings`: Candidate yaw headings (deg); only the lowest and highest become patrol extremes.
     /// - `intervalRange`: Random pause between movements (s). Lower = more active, higher = calmer.
     /// - `transitionDurationRange`: Random move duration (s). Lower = snappier, higher = smoother sweeps.
     /// - `headFollowRate` / `bodyFollowRate`: Fractions (0...1) of error applied during idle moves.
     /// - `headJitterRange`: Small random jitter (deg) for a lively feel. Set to 0...0 to disable.
-    /// - `includeCameraBounds`: When true, adds camera edge headings so patrol hits extremes.
+    /// - `includeCameraBounds`: When true, adds camera edge headings when establishing the two extremes.
     static var defaultPatrolConfiguration: Self {
         .init(
             headings: [-90, 90],

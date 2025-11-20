@@ -103,14 +103,16 @@ final class StateMachine {
     private enum LeftHandAutoState { case lowered, raising, waving, pulseBack, pulseForward, raised }
     
     private struct PatrolState {
-        var headingIndex: Int = 0
+        var lowerHeading: Double = 0
+        var upperHeading: Double = 0
+        var nextTargetIsUpper: Bool = true
         var currentHeading: Double = 0
         var startHeading: Double = 0
         var targetHeading: Double = 0
         var nextSwitch: Date = .distantPast
         var transitionStart: Date = .distantPast
         var transitionEnd: Date = .distantPast
-        var headings: [Double] = []
+        var hasExtremes = false
     }
 
     private struct OffsetTracker {
@@ -437,30 +439,21 @@ final class StateMachine {
             return center + sin(idlePhase) * amplitude
         case .patrol(let config):
             var state = behavior.patrolState
-            var headings = state.headings
-            if headings.isEmpty {
-                headings = resolvedPatrolHeadings(for: config)
-                state.headings = headings
-                if headings.isEmpty {
-                    behavior.patrolState = state
+            if !state.hasExtremes {
+                guard let initial = initialPatrolState(for: config, now: now) else {
+                    behavior.patrolState = PatrolState()
                     return 0
                 }
-                state.headingIndex = state.headingIndex % max(1, headings.count)
-                let start = headings[state.headingIndex]
-                state.currentHeading = start
-                state.startHeading = start
-                state.targetHeading = start
-                state.transitionStart = now
-                state.transitionEnd = now
-                state.nextSwitch = now + randomInterval(in: config.intervalRange)
+                state = initial
             }
             if now >= state.nextSwitch {
-                state.headingIndex = (state.headingIndex + 1) % headings.count
+                let nextTarget = state.nextTargetIsUpper ? state.upperHeading : state.lowerHeading
                 state.startHeading = state.currentHeading
-                state.targetHeading = headings[state.headingIndex]
+                state.targetHeading = nextTarget
                 state.transitionStart = now
                 state.transitionEnd = now + randomInterval(in: config.transitionDurationRange)
                 state.nextSwitch = state.transitionEnd + randomInterval(in: config.intervalRange)
+                state.nextTargetIsUpper.toggle()
                 logEvent("patrol.transition", values: [
                     "target": state.targetHeading,
                     "duration": state.transitionEnd.timeIntervalSince(state.transitionStart),
@@ -480,14 +473,31 @@ final class StateMachine {
         }
     }
 
-    private func resolvedPatrolHeadings(for config: IdleBehavior.PatrolConfiguration) -> [Double] {
+    private func initialPatrolState(for config: IdleBehavior.PatrolConfiguration, now: Date) -> PatrolState? {
+        guard let extremes = resolvedPatrolExtremes(for: config) else { return nil }
+        var state = PatrolState()
+        state.hasExtremes = true
+        state.lowerHeading = extremes.lower
+        state.upperHeading = extremes.upper
+        let startAtUpper = Bool.random()
+        state.nextTargetIsUpper = !startAtUpper
+        let start = startAtUpper ? state.upperHeading : state.lowerHeading
+        state.currentHeading = start
+        state.startHeading = start
+        state.targetHeading = start
+        state.transitionStart = now
+        state.transitionEnd = now
+        state.nextSwitch = now + randomInterval(in: config.intervalRange)
+        return state
+    }
+
+    private func resolvedPatrolExtremes(for config: IdleBehavior.PatrolConfiguration) -> (lower: Double, upper: Double)? {
         var values = config.headings.map { clampCamera($0) }
         if config.includeCameraBounds {
             let bounds = configuration.cameraRange
             values.append(bounds.lowerBound)
             values.append(bounds.upperBound)
         }
-        guard !values.isEmpty else { return [] }
         values.sort()
         var deduped: [Double] = []
         let epsilon = settings.patrolHeadingDedupEpsilon
@@ -495,7 +505,8 @@ final class StateMachine {
             if let last = deduped.last, abs(last - value) < epsilon { continue }
             deduped.append(value)
         }
-        return deduped
+        guard let lower = deduped.first, let upper = deduped.last else { return nil }
+        return (lower, upper)
     }
 
     private func desiredHeading(now: Date, deltaTime: TimeInterval) -> (Double, OrientationContext) {
@@ -749,25 +760,15 @@ final class StateMachine {
             behavior.desiredHeading = 0
             return
         }
-        let headings = resolvedPatrolHeadings(for: config)
-        guard !headings.isEmpty else {
+        guard let state = initialPatrolState(for: config, now: now) else {
             behavior.patrolState = PatrolState()
             behavior.bodyTarget = 0
             behavior.headTarget = 0
             behavior.desiredHeading = 0
             return
         }
-        var state = PatrolState()
-        state.headings = headings
-        state.headingIndex = Int.random(in: 0..<headings.count)
-        let heading = headings[state.headingIndex]
-        state.currentHeading = heading
-        state.startHeading = heading
-        state.targetHeading = heading
-        state.transitionStart = now
-        state.transitionEnd = now
-        state.nextSwitch = now + randomInterval(in: config.intervalRange)
         behavior.patrolState = state
+        let heading = state.currentHeading
         behavior.bodyTarget = heading
         behavior.headTarget = heading
         behavior.desiredHeading = heading
