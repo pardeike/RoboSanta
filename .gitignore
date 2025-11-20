@@ -24,3 +24,6 @@ build/
 
 # App-specific artifacts
 RoboSantaApp/telemetry.json
+__pycache__/
+*.pyc
+*.pyo
