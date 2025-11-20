@@ -92,6 +92,14 @@ final class StateMachine {
         let velocityLimit: Double?
         let orientation: Orientation
         let voltage: RCServoVoltage?
+        let stallGuard: StallGuard?
+
+        struct StallGuard {
+            let tolerance: Double          // acceptable error band (logical units)
+            let holdDuration: TimeInterval // time to wait while steady before freezing the target
+            let minMovement: Double        // ignore movement smaller than this when deciding if we're still moving
+            let backoff: Double            // amount to pull back from a range edge when settling
+        }
     }
     
     enum FigurineError: Error {
@@ -101,6 +109,7 @@ final class StateMachine {
     
     private enum OrientationContext { case search, tracking, manual }
     private enum LeftHandAutoState { case lowered, raising, waving, pulseBack, pulseForward, raised }
+    private enum ServoAxis { case head, body }
     
     private struct PatrolState {
         var lowerHeading: Double = 0
@@ -120,6 +129,18 @@ final class StateMachine {
         var lastFiltered: Double?        // last filtered offset (-1..+1)
         var lastUpdate: Date?
         var velCamDegPerSec: Double = 0  // camera-space (deg/s)
+    }
+
+    private struct ServoStallState {
+        var lastTarget: Double?
+        var frozenTarget: Double?
+        var lastMeasurement: Double?
+        var lastMeasurementAt: Date?
+        var lastMovementAt: Date?
+        var lastCommandAt: Date?
+        var frozenEdge: Edge?
+
+        enum Edge { case lower, upper }
     }
     
     private struct BehaviorState {
@@ -198,6 +219,8 @@ final class StateMachine {
     private var pose = FigurinePose()
     private var measuredBodyAngle: Double?
     private var measuredHeadAngle: Double?
+    private var bodyStall = ServoStallState()
+    private var headStall = ServoStallState()
     private var loopTask: Task<Void, Never>?
     private var lastUpdate = Date()
     private var leftWavePhase: Double = 0
@@ -225,11 +248,19 @@ final class StateMachine {
         bodyChannel.setTelemetryLogger(telemetry)
         bodyChannel.setPositionObserver { [weak self] angle in
             guard let self else { return }
-            self.workerQueue.async { self.measuredBodyAngle = angle }
+            self.workerQueue.async {
+                let now = Date()
+                self.measuredBodyAngle = angle
+                self.updateStallMeasurement(for: .body, value: angle, now: now)
+            }
         }
         headChannel.setPositionObserver { [weak self] angle in
             guard let self else { return }
-            self.workerQueue.async { self.measuredHeadAngle = angle }
+            self.workerQueue.async {
+                let now = Date()
+                self.measuredHeadAngle = angle
+                self.updateStallMeasurement(for: .head, value: angle, now: now)
+            }
         }
         workerQueue.setSpecific(key: workerQueueKey, value: ())
         configureInitialPatrolState(now: Date())
@@ -262,6 +293,8 @@ final class StateMachine {
                 try leftHandChannel.open(timeout: configuration.attachmentTimeout)
                 try rightHandChannel.open(timeout: configuration.attachmentTimeout)
                 isRunning = true
+                bodyStall = ServoStallState()
+                headStall = ServoStallState()
                 lastUpdate = Date()
                 updatePose(now: lastUpdate, deltaTime: 0)
                 applyPose()
@@ -291,6 +324,8 @@ final class StateMachine {
             leftIsWaving = false
             idlePhase = 0
             leftWavePhase = 0
+            bodyStall = ServoStallState()
+            headStall = ServoStallState()
             teardownChannelsLocked()
         }
     }
@@ -299,7 +334,15 @@ final class StateMachine {
         workerQueue.async { [weak self] in
             guard let self else { return }
             self.pendingEvents.append(event)
-            print("[event] \(event)")
+            if loggingEnabled {
+                switch event {
+                case .personDetected, .personLost:
+                    // Only log detection transitions inside processEvents to avoid spam.
+                    break
+                default:
+                    logState("event", values: ["value": "\(event)"])
+                }
+            }
         }
     }
     
@@ -396,6 +439,14 @@ final class StateMachine {
             behavior.facesVisible = false
         }
 
+        let detectionGained = !previouslyVisible && behavior.facesVisible
+        let detectionLost = previouslyVisible && !behavior.facesVisible
+        if detectionGained {
+            logState("event.personDetected")
+        } else if detectionLost {
+            logState("event.personLost")
+        }
+
         if !previouslyVisible && behavior.facesVisible {
             armLeftHandAutopilotIfEligible(now: now)
         }
@@ -411,7 +462,7 @@ final class StateMachine {
         if orientationNeedsUpdate(for: desiredHeading, context: context) {
             scheduleOrientationChange(to: desiredHeading, context: context, now: now)
         }
-        updateHeadAndBodyTargets(deltaTime: deltaTime)
+        updateHeadAndBodyTargets(now: now, deltaTime: deltaTime)
 
         pose.bodyAngle = behavior.bodyTarget
         pose.headAngle = behavior.headTarget
@@ -557,7 +608,7 @@ final class StateMachine {
         }
     }
     
-    private func updateHeadAndBodyTargets(deltaTime: TimeInterval) {
+    private func updateHeadAndBodyTargets(now: Date, deltaTime: TimeInterval) {
         let desired = behavior.desiredHeading
         let context = behavior.currentContext
         let params = orientationParameters(for: context)
@@ -630,8 +681,139 @@ final class StateMachine {
             }
         }
 
+        newHead = resolveStalledTarget(for: .head, proposed: newHead, now: now)
+        newBody = resolveStalledTarget(for: .body, proposed: newBody, now: now)
+
         behavior.headTarget = newHead
         behavior.bodyTarget = newBody
+    }
+
+    private func resolveStalledTarget(for axis: ServoAxis, proposed: Double, now: Date) -> Double {
+        switch axis {
+        case .head:
+            guard let guardConfig = configuration.head.stallGuard else { return proposed }
+            return resolveStalledTarget(
+                proposed: proposed,
+                state: &headStall,
+                config: guardConfig,
+                logicalRange: configuration.head.logicalRange,
+                now: now,
+                label: "head"
+            )
+        case .body:
+            guard let guardConfig = configuration.body.stallGuard else { return proposed }
+            return resolveStalledTarget(
+                proposed: proposed,
+                state: &bodyStall,
+                config: guardConfig,
+                logicalRange: configuration.body.logicalRange,
+                now: now,
+                label: "body"
+            )
+        }
+    }
+
+    private func resolveStalledTarget(
+        proposed: Double,
+        state: inout ServoStallState,
+        config: ServoChannelConfiguration.StallGuard,
+        logicalRange: ClosedRange<Double>,
+        now: Date,
+        label: String
+    ) -> Double {
+        if let frozen = state.frozenTarget {
+            if let edge = state.frozenEdge {
+                let releasing: Bool
+                switch edge {
+                case .lower:
+                    releasing = proposed > frozen + config.tolerance
+                case .upper:
+                    releasing = proposed < frozen - config.tolerance
+                }
+                if !releasing { return frozen }
+            } else if abs(proposed - frozen) <= config.tolerance {
+                return frozen
+            }
+            state.frozenTarget = nil
+            state.frozenEdge = nil
+        }
+
+        if state.lastTarget.map({ abs($0 - proposed) > config.minMovement }) ?? true {
+            state.lastTarget = proposed
+            state.lastCommandAt = now
+            state.lastMovementAt = now
+        }
+
+        guard let measurement = state.lastMeasurement,
+              let measuredAt = state.lastMeasurementAt,
+              let commandAt = state.lastCommandAt else {
+            return proposed
+        }
+
+        guard measuredAt >= commandAt else { return proposed }
+
+        let stableSince = state.lastMovementAt ?? commandAt
+        guard now.timeIntervalSince(stableSince) >= config.holdDuration else { return proposed }
+        guard abs(measurement - proposed) <= config.tolerance else { return proposed }
+
+        var settled = measurement
+        var backedOff = false
+        var settledEdge: ServoStallState.Edge?
+        if config.backoff > 0 {
+            if measurement - logicalRange.lowerBound <= config.tolerance {
+                settled = (logicalRange.lowerBound + config.backoff).clamped(to: logicalRange)
+                backedOff = true
+                settledEdge = .lower
+            } else if logicalRange.upperBound - measurement <= config.tolerance {
+                settled = (logicalRange.upperBound - config.backoff).clamped(to: logicalRange)
+                backedOff = true
+                settledEdge = .upper
+            }
+        }
+
+        state.frozenTarget = settled
+        state.frozenEdge = settledEdge
+        state.lastTarget = settled
+        logEvent("servo.settle", values: [
+            "servo": label,
+            "target": proposed,
+            "settled": settled
+        ])
+        if backedOff {
+            logState("servo.backoff", values: [
+                "servo": label,
+                "meas": measurement,
+                "settled": settled
+            ])
+        }
+        return settled
+    }
+
+    private func updateStallMeasurement(for axis: ServoAxis, value: Double, now: Date) {
+        switch axis {
+        case .head:
+            guard let guardConfig = configuration.head.stallGuard else { return }
+            if let last = headStall.lastMeasurement {
+                if abs(value - last) > guardConfig.minMovement {
+                    headStall.lastMovementAt = now
+                }
+            } else {
+                headStall.lastMovementAt = now
+            }
+            headStall.lastMeasurement = value
+            headStall.lastMeasurementAt = now
+        case .body:
+            guard let guardConfig = configuration.body.stallGuard else { return }
+            if let last = bodyStall.lastMeasurement {
+                if abs(value - last) > guardConfig.minMovement {
+                    bodyStall.lastMovementAt = now
+                }
+            } else {
+                bodyStall.lastMovementAt = now
+            }
+            bodyStall.lastMeasurement = value
+            bodyStall.lastMeasurementAt = now
+        }
     }
     
     private func orientationParameters(for context: OrientationContext) -> (headFollowRate: Double, bodyFollowRate: Double, headJitter: ClosedRange<Double>) {
@@ -734,7 +916,7 @@ final class StateMachine {
                     "pred": prior,
                     "note": "center-hold"
                 ])
-                logState("tracking.face", values: ["meas": measAbs, "pred": prior, "off": offset])
+                // logState("tracking.face", values: ["meas": measAbs, "pred": prior, "off": offset])
                 return
             }
         } else {
@@ -749,7 +931,7 @@ final class StateMachine {
             "meas": measAbs,
             "pred": blended
         ])
-        logState("tracking.face", values: ["meas": measAbs, "pred": blended, "off": offset])
+        // logState("tracking.face", values: ["meas": measAbs, "pred": blended, "off": offset])
     }
     
     private func configureInitialPatrolState(now: Date) {
@@ -1202,7 +1384,10 @@ private final class ServoChannel {
             outputError(errorDescription: "[\(configuration.name)] \(step): \(err.description)", errorCode: err.errorCode.rawValue)
             throw err
         }
-        catch { print(error); throw error }
+        catch {
+            logTelemetry("servo.error", values: ["step": step, "description": "\(error)"])
+            throw error
+        }
     }
     
     private func perform(_ step: String, _ action: () throws -> Void) {
@@ -1211,7 +1396,9 @@ private final class ServoChannel {
             outputError(errorDescription: "[\(configuration.name)] \(step): \(err.description)", errorCode: err.errorCode.rawValue)
             logTelemetry("servo.error", values: ["step": step, "code": err.errorCode.rawValue, "description": err.description])
         }
-        catch { print(error) }
+        catch {
+            logTelemetry("servo.error", values: ["step": step, "description": "\(error)"])
+        }
     }
     
     private func clamp(_ value: Double, min: Double?, max: Double?) -> Double {
