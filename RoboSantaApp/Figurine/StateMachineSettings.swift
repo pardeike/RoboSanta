@@ -80,40 +80,35 @@ extension StateMachine {
         /// Typical: 40...120 deg/s.
         let velCapDegPerSec: Double
 
-        /// Delay (s) after acquiring a person before the left hand starts waving.
-        /// Lower = greets sooner; higher = waits to confirm presence.
-        /// Typical: 0.2...1.0 s.
-        let leftHandRaiseDelay: TimeInterval
+        /// Number of wave cycles to perform (full up-down-up movements).
+        /// Lower = quick, brief wave; higher = more enthusiastic waving.
+        /// Typical: 1...5 cycles.
+        let leftHandWaveCycles: Int
 
-        /// Duration (s) of the wave motion.
-        /// Lower = quick, subtle wave; higher = long, languid wave.
-        /// Typical: 1.0...2.5 s.
-        let leftHandWaveDuration: TimeInterval
+        /// Angle (in normalized units) to pull back from max position during each wave.
+        /// Lower = subtle wave; higher = more dramatic wave motion.
+        /// Typical: 0.05...0.3 (relative to full servo range).
+        let leftHandWaveBackAngle: Double
 
-        /// Normalized amplitude of the wave (0 = no movement, 1 = full servo span).
-        /// Lower = smaller wrist arc; higher = bigger, potentially mechanical limit if too large.
-        /// Typical: 0.05...0.2.
-        let leftHandWaveAmplitude: Double
+        /// Duration (s) to pause at the top position after waving completes.
+        /// Lower = quick return; higher = holds the greeting longer.
+        /// Typical: 0.5...2.0 s.
+        let leftHandPauseDuration: TimeInterval
 
-        /// Wave speed multiplier (cycles per second relative to default sine).
-        /// Lower = slow wave; higher = faster wagging.
-        /// Typical: 1.0...3.0.
+        /// Servo velocity (units/s) when raising the hand initially.
+        /// Lower = slower, gentler raise; higher = faster greeting.
+        /// Typical: 50...300 (depends on servo limits).
+        let leftHandRaiseSpeed: Double
+
+        /// Servo velocity (units/s) during the wave motion (both up and down).
+        /// Lower = slower, more deliberate wave; higher = quick wave.
+        /// Typical: 100...400 (depends on servo limits).
         let leftHandWaveSpeed: Double
 
-        /// Duration (s) for each post-wave pulse (back/forward).
-        /// Lower = quick tap; higher = more pronounced hold.
-        /// Typical: 0.2...0.7 s.
-        let leftHandPulseDuration: TimeInterval
-
-        /// Normalized offset for the backward pulse after waving (negative pushes the hand slightly back).
-        /// Lower/zero = no backward pulse; higher magnitude = clearer "recoil", mind servo bounds.
-        /// Typical: 0...0.15.
-        let leftHandPulseBackDelta: Double
-
-        /// Normalized offset for the forward pulse after waving.
-        /// Lower/zero = no forward push; higher = extra reach, avoid clipping servo range.
-        /// Typical: 0...0.15.
-        let leftHandPulseForwardDelta: Double
+        /// Servo velocity (units/s) when lowering the hand at the end.
+        /// Lower = gentle return; higher = quick drop.
+        /// Typical: 50...200 (depends on servo limits).
+        let leftHandLowerSpeed: Double
 
         /// Maximum time (s) the left hand may stay raised before forcing a cooldown.
         /// Lower = drops the hand sooner to avoid hogging; higher = allows longer hold when someone lingers.
@@ -124,6 +119,11 @@ extension StateMachine {
         /// Lower = more frequent re-greets (risk of spam); higher = fewer waves, more rest.
         /// Typical: 20...60 s.
         let minimumLeftHandCooldown: TimeInterval
+
+        /// Tolerance (in normalized units) for considering servo has reached target position.
+        /// Lower = more precise positioning; higher = faster transitions.
+        /// Typical: 0.01...0.05.
+        let leftHandPositionTolerance: Double
 
         /// Complete figurine configuration (servos, idle/tracking behaviour, timeouts).
         /// Tweak this when adjusting mechanical ranges, idle patterns, or tracking posture.
@@ -146,15 +146,15 @@ extension StateMachine {
             bodyRateCapDegPerSec: 50,
             orientationRescheduleThreshold: 0.5,
             velCapDegPerSec: 80,
-            leftHandRaiseDelay: 0.45,
-            leftHandWaveDuration: 1.6,
-            leftHandWaveAmplitude: 0.12,
-            leftHandWaveSpeed: 1.8,
-            leftHandPulseDuration: 0.45,
-            leftHandPulseBackDelta: 0.08,
-            leftHandPulseForwardDelta: 0.05,
+            leftHandWaveCycles: 3,
+            leftHandWaveBackAngle: 0.15,
+            leftHandPauseDuration: 1.0,
+            leftHandRaiseSpeed: 200,
+            leftHandWaveSpeed: 250,
+            leftHandLowerSpeed: 150,
             leftHandMaxRaisedDuration: 6.0,
             minimumLeftHandCooldown: 20.0,
+            leftHandPositionTolerance: 0.03,
             figurineConfiguration: .init(
                 leftHand: .defaultLeftHand,
                 rightHand: .defaultRightHand,
@@ -187,15 +187,15 @@ extension StateMachine {
                 bodyRateCapDegPerSec: bodyRateCapDegPerSec,
                 orientationRescheduleThreshold: orientationRescheduleThreshold,
                 velCapDegPerSec: velCapDegPerSec,
-                leftHandRaiseDelay: leftHandRaiseDelay,
-                leftHandWaveDuration: leftHandWaveDuration,
-                leftHandWaveAmplitude: leftHandWaveAmplitude,
+                leftHandWaveCycles: leftHandWaveCycles,
+                leftHandWaveBackAngle: leftHandWaveBackAngle,
+                leftHandPauseDuration: leftHandPauseDuration,
+                leftHandRaiseSpeed: leftHandRaiseSpeed,
                 leftHandWaveSpeed: leftHandWaveSpeed,
-                leftHandPulseDuration: leftHandPulseDuration,
-                leftHandPulseBackDelta: leftHandPulseBackDelta,
-                leftHandPulseForwardDelta: leftHandPulseForwardDelta,
+                leftHandLowerSpeed: leftHandLowerSpeed,
                 leftHandMaxRaisedDuration: leftHandMaxRaisedDuration,
                 minimumLeftHandCooldown: minimumLeftHandCooldown,
+                leftHandPositionTolerance: leftHandPositionTolerance,
                 figurineConfiguration: configuration
             )
         }
