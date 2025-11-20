@@ -5,9 +5,8 @@ import Dispatch
 
 /// Drives the physical figurine by coordinating the four Phidget RC servos.
 /// Feed it `Event`s from the outside world to influence Santa's pose.
+/// All settings can be found in StateMachineSettings.swift and are documented there
 final class StateMachine {
-    
-    let logging = true
     
     enum Event: Equatable {
         case idle
@@ -23,7 +22,7 @@ final class StateMachine {
     enum LeftHandGesture: Equatable {
         case down
         case up
-        case wave(amplitude: Double = 0.12, speed: Double = 1.6)
+        case wave(amplitude: Double = 0.12, speed: Double = 1.8)
     }
     
     enum RightHandGesture: Equatable {
@@ -49,10 +48,10 @@ final class StateMachine {
     }
     
     struct FigurinePose {
-        var bodyAngle: Double
-        var headAngle: Double
-        var leftHand: Double
-        var rightHand: Double
+        var bodyAngle: Double = 0
+        var headAngle: Double = 0
+        var leftHand: Double = 0
+        var rightHand: Double = 0
         var cameraHeading: Double { bodyAngle + headAngle }
     }
     
@@ -63,6 +62,7 @@ final class StateMachine {
         let body: ServoChannelConfiguration
         let idleBehavior: IdleBehavior
         let trackingBehavior: TrackingBehavior
+        let leftHandCooldownDuration: TimeInterval
         let headContributionRatio: Double
         let loopInterval: TimeInterval
         let attachmentTimeout: TimeInterval
@@ -79,68 +79,7 @@ final class StateMachine {
             let predictionSmoothing: Double // 0..1 (closer to 1 = more smoothing)
         }
         
-        static let `default` = FigurineConfiguration(
-            leftHand: .init(
-                name: "LeftHand",
-                channel: 0,
-                pulseRange: 550...2300,
-                logicalRange: 0...1,
-                homePosition: 0,
-                velocityLimit: 120, //60,
-                orientation: .normal,
-                voltage: nil
-            ),
-            rightHand: .init(
-                name: "RightHand",
-                channel: 1,
-                pulseRange: 550...2300,
-                logicalRange: 0...1,
-                homePosition: 0,
-                velocityLimit: 120, //60,
-                orientation: .reversed,
-                voltage: nil
-            ),
-            head: .init(
-                name: "Head",
-                channel: 2,
-                pulseRange: 700...1200,
-                logicalRange: -30...30,
-                homePosition: 0,
-                velocityLimit: 120, //90,
-                orientation: .normal,
-                voltage: nil
-            ),
-            body: .init(
-                name: "Body",
-                channel: 3,
-                pulseRange: 800...1800,
-                logicalRange: -90...90,
-                homePosition: 0,
-                velocityLimit: 120, //90,
-                orientation: .normal,
-                voltage: nil
-            ),
-            idleBehavior: .patrol(.init(
-                headings: [-90, 90], //[-65, 65],
-                intervalRange: 6...10,
-                transitionDurationRange: 1.8...3.2,
-                headFollowRate: 0.6, //0.5,
-                bodyFollowRate: 0.2, //0.15,
-                headJitterRange: (-5)...5,
-                includeCameraBounds: true
-            )),
-            trackingBehavior: .init(
-                holdDuration: 6.0,
-                headFollowRate: 0.8, //0.7,
-                bodyFollowRate: 0.3, //0.25,
-                cameraHorizontalFOV: 60,   // degrees
-                deadband: 0.08,
-                predictionSmoothing: 0.2 //0.3
-            ),
-            headContributionRatio: 0.4,
-            loopInterval: 0.02,
-            attachmentTimeout: 5
-        )
+        static let `default` = StateMachine.Settings.default.figurineConfiguration
     }
     
     struct ServoChannelConfiguration {
@@ -202,6 +141,7 @@ final class StateMachine {
         var faceHeading: Double?
         var faceOffset: Double?          // last raw offset (-1..+1)
         var lastFaceOffset: Double?
+        var facesVisible = false
 
         var tracker = OffsetTracker()
         var centerHoldBegan: Date?
@@ -213,6 +153,8 @@ final class StateMachine {
         var leftHandOverride: Double?
         var leftHandRaisedTimestamp: Date?
         var leftHandCooldownActive = false
+        var leftHandCooldownUntil: Date?
+        var leftHandAutopilotArmed = false
 
         mutating func focus(on heading: Double, now: Date) {
             trackingHeading = heading
@@ -244,12 +186,14 @@ final class StateMachine {
     private let rightHandChannel: ServoChannel
     private let headChannel: ServoChannel
     private let bodyChannel: ServoChannel
+    private let settings: Settings
+    private let loggingEnabled: Bool
     private let workerQueue = DispatchQueue(label: "RoboSanta.StateMachine", qos: .userInitiated)
     private let workerQueueKey = DispatchSpecificKey<Void>()
     
     private var pendingEvents: [Event] = []
     private var behavior: BehaviorState
-    private var pose = FigurinePose(bodyAngle: 0, headAngle: 0, leftHand: 0, rightHand: 0)
+    private var pose = FigurinePose()
     private var measuredBodyAngle: Double?
     private var measuredHeadAngle: Double?
     private var loopTask: Task<Void, Never>?
@@ -258,44 +202,18 @@ final class StateMachine {
     private var idlePhase: Double = 0
     private var leftIsWaving = false
     private var isRunning = false
-
-    // ---- Tuning dials (safe defaults) ----
-    // Center hold: freeze body when the face is nearly centered.
-    private let centerHoldOffsetNorm: Double = 0.06
-    private let centerHoldVelDeg: Double = 10.0
-    private let centerHoldMin: TimeInterval = 0.18
-
-    // Offset filtering + jump rejection.
-    private let offsetLPFAlpha: Double = 0.35   // 0..1 (higher = less smoothing)
-    private let maxJumpDeg: Double = 30.0       // reject if meas jumps this far vs last track
-
-    // Lead prediction near center is destabilizing; keep it tiny and scale with |offset|.
-    private let leadSecondsMax: TimeInterval = 0.08
-    private let leadDegCap: Double = 2.5
-
-    // Motion caps (servo-friendly).
-    private let headRateCapDegPerSec: Double = 150
-    private let bodyRateCapDegPerSec: Double = 90
-    private let velCapDegPerSec: Double = 80
     
-    // Left-hand greeting behaviour.
-    private let leftHandRaiseDelay: TimeInterval = 0.45
-    private let leftHandWaveDuration: TimeInterval = 1.6
-    private let leftHandWaveAmplitude: Double = 0.12
-    private let leftHandWaveSpeed: Double = 1.8
-    private let leftHandPulseDuration: TimeInterval = 0.45
-    private let leftHandPulseBackDelta: Double = 0.08
-    private let leftHandPulseForwardDelta: Double = 0.05
-    private let leftHandMaxRaisedDuration: TimeInterval = 6.0
-
-    init(configuration: FigurineConfiguration = .default, telemetry: TelemetryLogger = .shared) {
-        self.configuration = configuration
+    init(configuration: FigurineConfiguration = .default, telemetry: TelemetryLogger = .shared, settings: Settings = .default) {
+        let mergedSettings = settings.withFigurineConfiguration(configuration)
+        self.settings = mergedSettings
+        self.configuration = mergedSettings.figurineConfiguration
         self.telemetry = telemetry
-        self.behavior = BehaviorState(idleBehavior: configuration.idleBehavior)
-        self.leftHandChannel = ServoChannel(configuration: configuration.leftHand)
-        self.rightHandChannel = ServoChannel(configuration: configuration.rightHand)
-        self.headChannel = ServoChannel(configuration: configuration.head)
-        self.bodyChannel = ServoChannel(configuration: configuration.body)
+        self.loggingEnabled = mergedSettings.loggingEnabled
+        self.behavior = BehaviorState(idleBehavior: self.configuration.idleBehavior)
+        self.leftHandChannel = ServoChannel(configuration: self.configuration.leftHand)
+        self.rightHandChannel = ServoChannel(configuration: self.configuration.rightHand)
+        self.headChannel = ServoChannel(configuration: self.configuration.head)
+        self.bodyChannel = ServoChannel(configuration: self.configuration.body)
         let telemetry: (String, [String: CustomStringConvertible]) -> Void = { [weak self] event, values in
             self?.logEvent(event, values: values)
         }
@@ -367,7 +285,7 @@ final class StateMachine {
         if let task { await task.value }
         syncOnWorkerQueue {
             pendingEvents.removeAll(keepingCapacity: true)
-            resetLeftHandAutopilot()
+            resetLeftHandAutopilot(clearTimeCooldown: true)
             leftIsWaving = false
             idlePhase = 0
             leftWavePhase = 0
@@ -420,6 +338,8 @@ final class StateMachine {
 
         // Use the latest personDetected per tick to avoid chasing intra-frame jitter.
         var lastDetectedOffset: Double?
+        let previouslyVisible = behavior.facesVisible
+        var sawPerson = false
 
         for event in events {
             switch event {
@@ -455,13 +375,27 @@ final class StateMachine {
 
             case .personDetected(let offset):
                 lastDetectedOffset = offset
+                sawPerson = true
 
             case .personLost:
+                let hadFocus = behavior.focusStart != nil
                 behavior.clearFocus()
+                if hadFocus { startLeftHandCooldown(now: now) }
                 resetLeftHandAutopilot()
+                behavior.facesVisible = false
                 logEvent("tracking.lost")
                 logState("tracking.lost")
             }
+        }
+
+        if sawPerson {
+            behavior.facesVisible = true
+        } else if lastDetectedOffset == nil {
+            behavior.facesVisible = false
+        }
+
+        if !previouslyVisible && behavior.facesVisible {
+            armLeftHandAutopilotIfEligible(now: now)
         }
 
         if let o = lastDetectedOffset {
@@ -556,7 +490,7 @@ final class StateMachine {
         guard !values.isEmpty else { return [] }
         values.sort()
         var deduped: [Double] = []
-        let epsilon = 0.001
+        let epsilon = settings.patrolHeadingDedupEpsilon
         for value in values {
             if let last = deduped.last, abs(last - value) < epsilon { continue }
             deduped.append(value)
@@ -575,7 +509,9 @@ final class StateMachine {
         } else {
             if let last = behavior.lastPersonDetection,
                now.timeIntervalSince(last) > configuration.trackingBehavior.holdDuration {
+                if behavior.focusStart != nil { startLeftHandCooldown(now: now) }
                 behavior.clearFocus()
+                behavior.facesVisible = false
                 resetLeftHandAutopilot()
             }
         }
@@ -583,7 +519,7 @@ final class StateMachine {
     }
     
     private func orientationNeedsUpdate(for heading: Double, context: OrientationContext) -> Bool {
-        let threshold = 0.5
+        let threshold = settings.orientationRescheduleThreshold
         if abs(heading - behavior.lastScheduledHeading) > threshold { return true }
         if behavior.currentContext != context { return true }
         return false
@@ -631,13 +567,13 @@ final class StateMachine {
         if deltaTime > 0 {
             newHead = approach(current: behavior.headTarget,
                                target: newHead,
-                               maxDelta: headRateCapDegPerSec * deltaTime)
+                               maxDelta: settings.headRateCapDegPerSec * deltaTime)
         }
         newHead = clampHead(newHead)
 
         // Body follows head, but freeze near center to kill oscillation
         var bodyRate = (params.bodyFollowRate.clamped(to: 0...1.0)) * nearCenterGain
-        if context == .tracking, let off = behavior.lastFaceOffset, abs(off) < centerHoldOffsetNorm {
+        if context == .tracking, let off = behavior.lastFaceOffset, abs(off) < settings.centerHoldOffsetNorm {
             bodyRate = 0 // head does the fine work
         }
         let bodyDemand = clampBody(desired - newHead)
@@ -645,7 +581,7 @@ final class StateMachine {
         if deltaTime > 0 {
             newBody = approach(current: behavior.bodyTarget,
                                target: newBody,
-                               maxDelta: bodyRateCapDegPerSec * deltaTime)
+                               maxDelta: settings.bodyRateCapDegPerSec * deltaTime)
         }
         newBody = clampBody(newBody)
 
@@ -666,7 +602,7 @@ final class StateMachine {
         }
     }
     
-    /// Camera‑space predictor with small, offset‑scaled lead and a center hold.
+    /// Camera-space predictor with small, offset-scaled lead and a center hold.
     private func updateTrackingHeading(offset: Double, now: Date, currentHeading: Double) {
         let cfg = configuration.trackingBehavior
         let halfFOV = max(1.0, cfg.cameraHorizontalFOV / 2.0)
@@ -690,7 +626,7 @@ final class StateMachine {
         let dt = max(1.0/90.0, min(0.2, tr.lastUpdate.map { now.timeIntervalSince($0) } ?? configuration.loopInterval))
         let filtered: Double
         if let lastF = tr.lastFiltered {
-            filtered = lastF + (offset - lastF) * offsetLPFAlpha
+            filtered = lastF + (offset - lastF) * settings.offsetLPFAlpha
         } else {
             filtered = offset
         }
@@ -700,7 +636,7 @@ final class StateMachine {
             let rawVel = ((filtered - lastF) * halfFOV) / dt
             let alpha = max(0.05, min(0.95, 1 - cfg.predictionSmoothing))
             let vSmoothed = tr.velCamDegPerSec + (rawVel - tr.velCamDegPerSec) * alpha
-            tr.velCamDegPerSec = max(-velCapDegPerSec, min(velCapDegPerSec, vSmoothed))
+            tr.velCamDegPerSec = max(-settings.velCapDegPerSec, min(settings.velCapDegPerSec, vSmoothed))
         } else {
             tr.velCamDegPerSec = 0
         }
@@ -714,7 +650,7 @@ final class StateMachine {
 
         // Reject big jumps vs last track to avoid bursts from detector swaps
         let prior = behavior.trackingHeading ?? behavior.faceHeading ?? measAbs
-        if abs(measAbs - prior) > maxJumpDeg {
+        if abs(measAbs - prior) > settings.maxJumpDeg {
             logEvent("tracking.reject", values: [
                 "jump": abs(measAbs - prior),
                 "meas": measAbs,
@@ -727,7 +663,7 @@ final class StateMachine {
 
         // Lead term: tiny, scaled by |filtered offset|, zero near center
         let leadScale = min(1.0, max(0.0, abs(filtered))) // 0..1
-        let leadTerm = max(-leadDegCap, min(leadDegCap, tr.velCamDegPerSec * (leadSecondsMax * leadScale)))
+        let leadTerm = max(-settings.leadDegCap, min(settings.leadDegCap, tr.velCamDegPerSec * (settings.leadSecondsMax * leadScale)))
 
         // Predicted absolute heading (bounded)
         let predictedAbs = clampCamera(currentHeading + filtered * halfFOV + leadTerm)
@@ -735,14 +671,15 @@ final class StateMachine {
         behavior.faceHeading = measAbs
 
         // Blend prediction with measurement; near center trust measurement more
-        let alphaPred = 0.35 + 0.25 * leadScale // 0.35..0.60
+        let blend = settings.predictionBlendBase + settings.predictionBlendScale * leadScale
+        let alphaPred = blend.clamped(to: 0...1)
         let blended = prior + (predictedAbs - prior) * alphaPred
 
         // Center-hold body freeze helper: if very centered & slow, keep heading steady
-        if abs(filtered) < centerHoldOffsetNorm,
-           abs(tr.velCamDegPerSec) < centerHoldVelDeg {
+        if abs(filtered) < settings.centerHoldOffsetNorm,
+           abs(tr.velCamDegPerSec) < settings.centerHoldVelDeg {
             if behavior.centerHoldBegan == nil { behavior.centerHoldBegan = now }
-            if now.timeIntervalSince(behavior.centerHoldBegan ?? now) >= centerHoldMin {
+            if now.timeIntervalSince(behavior.centerHoldBegan ?? now) >= settings.centerHoldMin {
                 // Stick to prior to avoid dithering
                 behavior.trackingHeading = prior
                 behavior.focus(on: prior, now: now)
@@ -819,7 +756,11 @@ final class StateMachine {
         }
     }
     
-    private func resetLeftHandAutopilot() {
+    private var resolvedLeftHandCooldownDuration: TimeInterval {
+        max(settings.minimumLeftHandCooldown, configuration.leftHandCooldownDuration)
+    }
+    
+    private func resetLeftHandAutopilot(clearTimeCooldown: Bool = false) {
         behavior.leftHandAutoState = .lowered
         behavior.leftHandWaveReadyAt = nil
         behavior.leftHandWaveEndAt = nil
@@ -827,6 +768,8 @@ final class StateMachine {
         behavior.leftHandOverride = nil
         behavior.leftHandRaisedTimestamp = nil
         behavior.leftHandCooldownActive = false
+        behavior.leftHandAutopilotArmed = false
+        if clearTimeCooldown { behavior.leftHandCooldownUntil = nil }
         setLeftGesture(.down)
     }
     
@@ -834,9 +777,15 @@ final class StateMachine {
         sanitizedLeftHandPulseBackDelta > 0 || sanitizedLeftHandPulseForwardDelta > 0
     }
     
-    private var sanitizedLeftHandPulseBackDelta: Double { max(0, leftHandPulseBackDelta) }
-    private var sanitizedLeftHandPulseForwardDelta: Double { max(0, leftHandPulseForwardDelta) }
-    private var leftHandTimeoutEnabled: Bool { leftHandMaxRaisedDuration > 0 }
+    private var sanitizedLeftHandPulseBackDelta: Double { max(0, settings.leftHandPulseBackDelta) }
+    private var sanitizedLeftHandPulseForwardDelta: Double { max(0, settings.leftHandPulseForwardDelta) }
+    private var leftHandTimeoutEnabled: Bool { settings.leftHandMaxRaisedDuration > 0 }
+    private func isLeftHandTimeCooldownActive(now: Date) -> Bool {
+        guard let until = behavior.leftHandCooldownUntil else { return false }
+        if now < until { return true }
+        behavior.leftHandCooldownUntil = nil
+        return false
+    }
     
     private func setLeftHandOverride(toNormalized value: Double?) {
         if let value {
@@ -855,26 +804,39 @@ final class StateMachine {
         setLeftHandOverride(toNormalized: top + offset)
     }
 
-    private func enterLeftHandCooldown() {
+    private func armLeftHandAutopilotIfEligible(now: Date) {
+        guard !behavior.leftHandCooldownActive else { return }
+        guard !isLeftHandTimeCooldownActive(now: now) else { return }
+        behavior.leftHandAutopilotArmed = true
+    }
+
+    private func startLeftHandCooldown(now: Date) {
+        if let until = behavior.leftHandCooldownUntil, now < until { return }
+        behavior.leftHandCooldownUntil = now + resolvedLeftHandCooldownDuration
+    }
+
+    private func enterLeftHandCooldown(now: Date) {
         behavior.leftHandCooldownActive = true
         behavior.leftHandAutoState = .lowered
         behavior.leftHandWaveReadyAt = nil
         behavior.leftHandWaveEndAt = nil
         behavior.leftHandPulseEndAt = nil
         behavior.leftHandRaisedTimestamp = nil
+        startLeftHandCooldown(now: now)
         setLeftHandOverride(toNormalized: nil)
         setLeftGesture(.down)
+        behavior.leftHandAutopilotArmed = false
     }
 
     private func startLeftHandPulseBack(now: Date) {
         setLeftGesture(.up)
-        behavior.leftHandPulseEndAt = now + leftHandPulseDuration
+        behavior.leftHandPulseEndAt = now + settings.leftHandPulseDuration
         applyLeftHandPulse(offset: -sanitizedLeftHandPulseBackDelta)
     }
 
     private func startLeftHandPulseForward(now: Date) {
         setLeftGesture(.up)
-        behavior.leftHandPulseEndAt = now + leftHandPulseDuration
+        behavior.leftHandPulseEndAt = now + settings.leftHandPulseDuration
         applyLeftHandPulse(offset: sanitizedLeftHandPulseForwardDelta)
     }
     
@@ -886,18 +848,23 @@ final class StateMachine {
             }
             return
         }
+        let autopilotEngaged = behavior.leftHandAutopilotArmed || behavior.leftHandAutoState != .lowered
+        guard autopilotEngaged else { return }
+        if isLeftHandTimeCooldownActive(now: now) { return }
         if behavior.leftHandCooldownActive { return }
         if leftHandTimeoutEnabled,
            behavior.leftHandAutoState != .lowered,
            let start = behavior.leftHandRaisedTimestamp,
-           now.timeIntervalSince(start) >= leftHandMaxRaisedDuration {
-            enterLeftHandCooldown()
+           now.timeIntervalSince(start) >= settings.leftHandMaxRaisedDuration {
+            enterLeftHandCooldown(now: now)
             return
         }
         switch behavior.leftHandAutoState {
         case .lowered:
+            guard behavior.leftHandAutopilotArmed else { return }
+            behavior.leftHandAutopilotArmed = false
             behavior.leftHandAutoState = .raising
-            behavior.leftHandWaveReadyAt = now + leftHandRaiseDelay
+            behavior.leftHandWaveReadyAt = now + settings.leftHandRaiseDelay
             behavior.leftHandWaveEndAt = nil
             behavior.leftHandPulseEndAt = nil
             behavior.leftHandRaisedTimestamp = now
@@ -907,8 +874,8 @@ final class StateMachine {
             if now >= ready {
                 behavior.leftHandAutoState = .waving
                 behavior.leftHandWaveReadyAt = nil
-                behavior.leftHandWaveEndAt = now + leftHandWaveDuration
-                setLeftGesture(.wave(amplitude: leftHandWaveAmplitude, speed: leftHandWaveSpeed))
+                behavior.leftHandWaveEndAt = now + settings.leftHandWaveDuration
+                setLeftGesture(.wave(amplitude: settings.leftHandWaveAmplitude, speed: settings.leftHandWaveSpeed))
             }
         case .waving:
             guard let end = behavior.leftHandWaveEndAt else { return }
@@ -1011,7 +978,7 @@ final class StateMachine {
     }
     
     private func logEvent(_ type: String, values: [String: CustomStringConvertible] = [:]) {
-        guard logging else { return }
+        guard loggingEnabled else { return }
         var payload: [String: CustomStringConvertible] = ["type": type]
         for (k, v) in values { payload[k] = v }
         if let common = telemetryPayload(from: payload), let json = telemetry.serialize(common) {
@@ -1020,7 +987,7 @@ final class StateMachine {
     }
 
     private func logState(_ label: String, values: [String: CustomStringConvertible] = [:]) {
-        guard logging else { return }
+        guard loggingEnabled else { return }
         var message = "[state] \(label)"
         if !values.isEmpty {
             let details = values.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
