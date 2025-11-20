@@ -135,15 +135,15 @@ extension StateMachine {
             centerHoldOffsetNorm: 0.06,
             centerHoldVelDeg: 10.0,
             centerHoldMin: 0.18,
-            offsetLPFAlpha: 0.35,
+            offsetLPFAlpha: 0.5,
             maxJumpDeg: 30.0,
             patrolHeadingDedupEpsilon: 0.001,
             leadSecondsMax: 0.08,
             leadDegCap: 2.5,
             predictionBlendBase: 0.35,
             predictionBlendScale: 0.25,
-            headRateCapDegPerSec: 150,
-            bodyRateCapDegPerSec: 90,
+            headRateCapDegPerSec: 250,
+            bodyRateCapDegPerSec: 50,
             orientationRescheduleThreshold: 0.5,
             velCapDegPerSec: 80,
             leftHandRaiseDelay: 0.45,
@@ -215,7 +215,7 @@ extension StateMachine.ServoChannelConfiguration {
             pulseRange: 550...2300,
             logicalRange: 0...1,
             homePosition: 0,
-            velocityLimit: 120,
+            velocityLimit: 200,
             orientation: .normal,
             voltage: nil,
             stallGuard: nil
@@ -232,7 +232,7 @@ extension StateMachine.ServoChannelConfiguration {
             pulseRange: 550...2300,
             logicalRange: 0...1,
             homePosition: 0,
-            velocityLimit: 120,
+            velocityLimit: 200,
             orientation: .reversed,
             voltage: nil,
             stallGuard: nil
@@ -249,7 +249,7 @@ extension StateMachine.ServoChannelConfiguration {
             pulseRange: 700...1200,
             logicalRange: -30...30,
             homePosition: 0,
-            velocityLimit: 120,
+            velocityLimit: 200,
             orientation: .normal,
             voltage: nil,
             stallGuard: .angularHead
@@ -266,7 +266,7 @@ extension StateMachine.ServoChannelConfiguration {
             pulseRange: 800...1800,
             logicalRange: -105...105,
             homePosition: 0,
-            velocityLimit: 120,
+            velocityLimit: 200,
             orientation: .normal,
             voltage: nil,
             stallGuard: .angularBody
@@ -313,11 +313,11 @@ extension StateMachine.FigurineConfiguration.TrackingBehavior {
     static var defaultTrackingBehavior: Self {
         .init(
             holdDuration: 6.0,
-            headFollowRate: 0.8,
-            bodyFollowRate: 0.3,
-            cameraHorizontalFOV: 60,
+            headFollowRate: 1.0,
+            bodyFollowRate: 1.0,
+            cameraHorizontalFOV: 90,
             deadband: 0.08,
-            predictionSmoothing: 0.2
+            predictionSmoothing: 0.1
         )
     }
 }
