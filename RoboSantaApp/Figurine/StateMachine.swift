@@ -108,7 +108,7 @@ final class StateMachine {
     }
     
     private enum OrientationContext { case search, tracking, manual }
-    private enum LeftHandAutoState { 
+    private enum LeftHandAutoState: Equatable { 
         case lowered
         case raising
         case waving(cyclesRemaining: Int, phase: WavePhase)
