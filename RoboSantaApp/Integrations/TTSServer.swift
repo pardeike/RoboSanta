@@ -142,7 +142,9 @@ class TTSServer {
     }
     
     private func isServerReachable(timeout: TimeInterval = 2) -> Bool {
-        guard let url = URL(string: "http://127.0.0.1:8080/") else { return false }
+        // Try to connect to server - we expect a 404 for a non-existent UUID
+        // but this confirms the server is running and responding
+        guard let url = URL(string: "http://127.0.0.1:8080/00000000-0000-0000-0000-000000000000") else { return false }
         let semaphore = DispatchSemaphore(value: 0)
         var reachable = false
         
@@ -153,8 +155,8 @@ class TTSServer {
         defer { session.invalidateAndCancel() }
         
         let task = session.dataTask(with: url) { _, response, error in
-            if error == nil, let httpResponse = response as? HTTPURLResponse,
-               (200...299).contains(httpResponse.statusCode) {
+            // Server is reachable if we get any HTTP response (including 404)
+            if error == nil, let httpResponse = response as? HTTPURLResponse {
                 reachable = true
             }
             semaphore.signal()
