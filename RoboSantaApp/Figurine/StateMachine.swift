@@ -86,7 +86,7 @@ final class StateMachine {
                 pulseRange: 550...2300,
                 logicalRange: 0...1,
                 homePosition: 0,
-                velocityLimit: 60,
+                velocityLimit: 120, //60,
                 orientation: .normal,
                 voltage: nil
             ),
@@ -96,7 +96,7 @@ final class StateMachine {
                 pulseRange: 550...2300,
                 logicalRange: 0...1,
                 homePosition: 0,
-                velocityLimit: 60,
+                velocityLimit: 120, //60,
                 orientation: .reversed,
                 voltage: nil
             ),
@@ -106,7 +106,7 @@ final class StateMachine {
                 pulseRange: 700...1200,
                 logicalRange: -30...30,
                 homePosition: 0,
-                velocityLimit: 90,
+                velocityLimit: 120, //90,
                 orientation: .normal,
                 voltage: nil
             ),
@@ -116,26 +116,26 @@ final class StateMachine {
                 pulseRange: 800...1800,
                 logicalRange: -90...90,
                 homePosition: 0,
-                velocityLimit: 90,
+                velocityLimit: 120, //90,
                 orientation: .normal,
                 voltage: nil
             ),
             idleBehavior: .patrol(.init(
-                headings: [-65, 65],
+                headings: [-90, 90], //[-65, 65],
                 intervalRange: 6...10,
                 transitionDurationRange: 1.8...3.2,
-                headFollowRate: 0.5,
-                bodyFollowRate: 0.15,
+                headFollowRate: 0.6, //0.5,
+                bodyFollowRate: 0.2, //0.15,
                 headJitterRange: (-5)...5,
                 includeCameraBounds: true
             )),
             trackingBehavior: .init(
                 holdDuration: 6.0,
-                headFollowRate: 0.7,
-                bodyFollowRate: 0.25,
+                headFollowRate: 0.8, //0.7,
+                bodyFollowRate: 0.3, //0.25,
                 cameraHorizontalFOV: 60,   // degrees
                 deadband: 0.08,
-                predictionSmoothing: 0.3
+                predictionSmoothing: 0.2 //0.3
             ),
             headContributionRatio: 0.4,
             loopInterval: 0.02,
@@ -161,6 +161,7 @@ final class StateMachine {
     }
     
     private enum OrientationContext { case search, tracking, manual }
+    private enum LeftHandAutoState { case lowered, raising, waving, pulseBack, pulseForward, raised }
     
     private struct PatrolState {
         var headingIndex: Int = 0
@@ -204,6 +205,14 @@ final class StateMachine {
 
         var tracker = OffsetTracker()
         var centerHoldBegan: Date?
+
+        var leftHandAutoState: LeftHandAutoState = .lowered
+        var leftHandWaveReadyAt: Date?
+        var leftHandWaveEndAt: Date?
+        var leftHandPulseEndAt: Date?
+        var leftHandOverride: Double?
+        var leftHandRaisedTimestamp: Date?
+        var leftHandCooldownActive = false
 
         mutating func focus(on heading: Double, now: Date) {
             trackingHeading = heading
@@ -268,6 +277,16 @@ final class StateMachine {
     private let headRateCapDegPerSec: Double = 150
     private let bodyRateCapDegPerSec: Double = 90
     private let velCapDegPerSec: Double = 80
+    
+    // Left-hand greeting behaviour.
+    private let leftHandRaiseDelay: TimeInterval = 0.45
+    private let leftHandWaveDuration: TimeInterval = 1.6
+    private let leftHandWaveAmplitude: Double = 0.12
+    private let leftHandWaveSpeed: Double = 1.8
+    private let leftHandPulseDuration: TimeInterval = 0.45
+    private let leftHandPulseBackDelta: Double = 0.08
+    private let leftHandPulseForwardDelta: Double = 0.05
+    private let leftHandMaxRaisedDuration: TimeInterval = 6.0
 
     init(configuration: FigurineConfiguration = .default, telemetry: TelemetryLogger = .shared) {
         self.configuration = configuration
@@ -348,6 +367,7 @@ final class StateMachine {
         if let task { await task.value }
         syncOnWorkerQueue {
             pendingEvents.removeAll(keepingCapacity: true)
+            resetLeftHandAutopilot()
             leftIsWaving = false
             idlePhase = 0
             leftWavePhase = 0
@@ -407,7 +427,7 @@ final class StateMachine {
                 behavior.manualOverride = false
                 behavior.manualHeading = nil
                 behavior.clearFocus()
-                behavior.leftGesture = .down
+                resetLeftHandAutopilot()
                 behavior.rightGesture = .down
                 behavior.idleBehavior = configuration.idleBehavior
                 configureInitialPatrolState(now: now)
@@ -423,10 +443,7 @@ final class StateMachine {
                 behavior.manualHeading = nil
 
             case .setLeftHand(let gesture):
-                let wasWave = leftIsWaving
-                behavior.leftGesture = gesture
-                leftIsWaving = (gesture.isWave || wasWave) && (gesture.isWave)
-                if case .wave = gesture, !wasWave { leftWavePhase = 0 }
+                setLeftGesture(gesture)
 
             case .setRightHand(let gesture):
                 behavior.rightGesture = gesture
@@ -441,6 +458,7 @@ final class StateMachine {
 
             case .personLost:
                 behavior.clearFocus()
+                resetLeftHandAutopilot()
                 logEvent("tracking.lost")
                 logState("tracking.lost")
             }
@@ -461,6 +479,7 @@ final class StateMachine {
 
         pose.bodyAngle = behavior.bodyTarget
         pose.headAngle = behavior.headTarget
+        updateLeftHandAutopilot(now: now)
         pose.leftHand = leftHandValue(deltaTime: deltaTime)
         pose.rightHand = rightHandValue()
 
@@ -557,6 +576,7 @@ final class StateMachine {
             if let last = behavior.lastPersonDetection,
                now.timeIntervalSince(last) > configuration.trackingBehavior.holdDuration {
                 behavior.clearFocus()
+                resetLeftHandAutopilot()
             }
         }
         return (idleHeading(now: now, deltaTime: deltaTime), .search)
@@ -786,8 +806,153 @@ final class StateMachine {
         ])
         logState("patrol.target", values: ["heading": heading])
     }
+
+    private func setLeftGesture(_ gesture: LeftHandGesture) {
+        let wasWave = leftIsWaving
+        behavior.leftGesture = gesture
+        behavior.leftHandOverride = nil
+        if case .wave = gesture {
+            if !wasWave { leftWavePhase = 0 }
+            leftIsWaving = true
+        } else {
+            leftIsWaving = false
+        }
+    }
+    
+    private func resetLeftHandAutopilot() {
+        behavior.leftHandAutoState = .lowered
+        behavior.leftHandWaveReadyAt = nil
+        behavior.leftHandWaveEndAt = nil
+        behavior.leftHandPulseEndAt = nil
+        behavior.leftHandOverride = nil
+        behavior.leftHandRaisedTimestamp = nil
+        behavior.leftHandCooldownActive = false
+        setLeftGesture(.down)
+    }
+    
+    private var leftHandPulseEnabled: Bool {
+        sanitizedLeftHandPulseBackDelta > 0 || sanitizedLeftHandPulseForwardDelta > 0
+    }
+    
+    private var sanitizedLeftHandPulseBackDelta: Double { max(0, leftHandPulseBackDelta) }
+    private var sanitizedLeftHandPulseForwardDelta: Double { max(0, leftHandPulseForwardDelta) }
+    private var leftHandTimeoutEnabled: Bool { leftHandMaxRaisedDuration > 0 }
+    
+    private func setLeftHandOverride(toNormalized value: Double?) {
+        if let value {
+            behavior.leftHandOverride = configuration.leftHand.logicalRange.clamp(value)
+        } else {
+            behavior.leftHandOverride = nil
+        }
+    }
+
+    private func applyLeftHandPulse(offset: Double) {
+        guard leftHandPulseEnabled else {
+            setLeftHandOverride(toNormalized: nil)
+            return
+        }
+        let top = configuration.leftHand.logicalRange.upperBound
+        setLeftHandOverride(toNormalized: top + offset)
+    }
+
+    private func enterLeftHandCooldown() {
+        behavior.leftHandCooldownActive = true
+        behavior.leftHandAutoState = .lowered
+        behavior.leftHandWaveReadyAt = nil
+        behavior.leftHandWaveEndAt = nil
+        behavior.leftHandPulseEndAt = nil
+        behavior.leftHandRaisedTimestamp = nil
+        setLeftHandOverride(toNormalized: nil)
+        setLeftGesture(.down)
+    }
+
+    private func startLeftHandPulseBack(now: Date) {
+        setLeftGesture(.up)
+        behavior.leftHandPulseEndAt = now + leftHandPulseDuration
+        applyLeftHandPulse(offset: -sanitizedLeftHandPulseBackDelta)
+    }
+
+    private func startLeftHandPulseForward(now: Date) {
+        setLeftGesture(.up)
+        behavior.leftHandPulseEndAt = now + leftHandPulseDuration
+        applyLeftHandPulse(offset: sanitizedLeftHandPulseForwardDelta)
+    }
+    
+    private func updateLeftHandAutopilot(now: Date) {
+        let trackingActive = (behavior.focusStart != nil)
+        guard trackingActive else {
+            if behavior.leftHandAutoState != .lowered || behavior.leftHandCooldownActive {
+                resetLeftHandAutopilot()
+            }
+            return
+        }
+        if behavior.leftHandCooldownActive { return }
+        if leftHandTimeoutEnabled,
+           behavior.leftHandAutoState != .lowered,
+           let start = behavior.leftHandRaisedTimestamp,
+           now.timeIntervalSince(start) >= leftHandMaxRaisedDuration {
+            enterLeftHandCooldown()
+            return
+        }
+        switch behavior.leftHandAutoState {
+        case .lowered:
+            behavior.leftHandAutoState = .raising
+            behavior.leftHandWaveReadyAt = now + leftHandRaiseDelay
+            behavior.leftHandWaveEndAt = nil
+            behavior.leftHandPulseEndAt = nil
+            behavior.leftHandRaisedTimestamp = now
+            setLeftGesture(.up)
+        case .raising:
+            guard let ready = behavior.leftHandWaveReadyAt else { return }
+            if now >= ready {
+                behavior.leftHandAutoState = .waving
+                behavior.leftHandWaveReadyAt = nil
+                behavior.leftHandWaveEndAt = now + leftHandWaveDuration
+                setLeftGesture(.wave(amplitude: leftHandWaveAmplitude, speed: leftHandWaveSpeed))
+            }
+        case .waving:
+            guard let end = behavior.leftHandWaveEndAt else { return }
+            if now >= end {
+                behavior.leftHandWaveEndAt = nil
+                if leftHandPulseEnabled {
+                    behavior.leftHandAutoState = .pulseBack
+                    startLeftHandPulseBack(now: now)
+                } else {
+                    behavior.leftHandAutoState = .raised
+                    setLeftHandOverride(toNormalized: nil)
+                    setLeftGesture(.up)
+                }
+            }
+        case .pulseBack:
+            guard let end = behavior.leftHandPulseEndAt else { return }
+            if now >= end {
+                behavior.leftHandPulseEndAt = nil
+                if sanitizedLeftHandPulseForwardDelta > 0 {
+                    behavior.leftHandAutoState = .pulseForward
+                    startLeftHandPulseForward(now: now)
+                } else {
+                    behavior.leftHandAutoState = .raised
+                    setLeftHandOverride(toNormalized: nil)
+                    setLeftGesture(.up)
+                }
+            }
+        case .pulseForward:
+            guard let end = behavior.leftHandPulseEndAt else { return }
+            if now >= end {
+                behavior.leftHandPulseEndAt = nil
+                behavior.leftHandAutoState = .raised
+                setLeftHandOverride(toNormalized: nil)
+                setLeftGesture(.up)
+            }
+        case .raised:
+            break
+        }
+    }
     
     private func leftHandValue(deltaTime: TimeInterval) -> Double {
+        if let override = behavior.leftHandOverride {
+            return override
+        }
         switch behavior.leftGesture {
         case .down:
             return configuration.leftHand.logicalRange.lowerBound
