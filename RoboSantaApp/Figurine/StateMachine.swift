@@ -108,7 +108,18 @@ final class StateMachine {
     }
     
     private enum OrientationContext { case search, tracking, manual }
-    private enum LeftHandAutoState { case lowered, raising, waving, pulseBack, pulseForward, raised }
+    private enum LeftHandAutoState { 
+        case lowered
+        case raising
+        case waving(cyclesRemaining: Int, phase: WavePhase)
+        case pausingAtTop
+        case lowering
+        
+        enum WavePhase {
+            case movingDown
+            case movingUp
+        }
+    }
     private enum ServoAxis { case head, body }
     
     private struct PatrolState {
@@ -170,14 +181,13 @@ final class StateMachine {
         var centerHoldBegan: Date?
 
         var leftHandAutoState: LeftHandAutoState = .lowered
-        var leftHandWaveReadyAt: Date?
-        var leftHandWaveEndAt: Date?
-        var leftHandPulseEndAt: Date?
-        var leftHandOverride: Double?
+        var leftHandTargetAngle: Double?
         var leftHandRaisedTimestamp: Date?
+        var leftHandPauseEndTime: Date?
         var leftHandCooldownActive = false
         var leftHandCooldownUntil: Date?
         var leftHandAutopilotArmed = false
+        var leftHandMeasuredAngle: Double?
 
         mutating func focus(on heading: Double, now: Date) {
             trackingHeading = heading
@@ -223,9 +233,7 @@ final class StateMachine {
     private var headStall = ServoStallState()
     private var loopTask: Task<Void, Never>?
     private var lastUpdate = Date()
-    private var leftWavePhase: Double = 0
     private var idlePhase: Double = 0
-    private var leftIsWaving = false
     private var isRunning = false
     
     init(configuration: FigurineConfiguration = .default, telemetry: TelemetryLogger = .shared, settings: Settings = .default) {
@@ -246,6 +254,13 @@ final class StateMachine {
         rightHandChannel.setTelemetryLogger(telemetry)
         headChannel.setTelemetryLogger(telemetry)
         bodyChannel.setTelemetryLogger(telemetry)
+        leftHandChannel.setPositionObserver { [weak self] angle in
+            guard let self else { return }
+            self.workerQueue.async {
+                self.behavior.leftHandMeasuredAngle = angle
+                self.handleLeftHandPositionUpdate(angle: angle, now: Date())
+            }
+        }
         bodyChannel.setPositionObserver { [weak self] angle in
             guard let self else { return }
             self.workerQueue.async {
@@ -321,9 +336,7 @@ final class StateMachine {
         syncOnWorkerQueue {
             pendingEvents.removeAll(keepingCapacity: true)
             resetLeftHandAutopilot(clearTimeCooldown: true)
-            leftIsWaving = false
             idlePhase = 0
-            leftWavePhase = 0
             bodyStall = ServoStallState()
             headStall = ServoStallState()
             teardownChannelsLocked()
@@ -960,17 +973,9 @@ final class StateMachine {
         ])
         logState("patrol.target", values: ["heading": heading])
     }
-
+    
     private func setLeftGesture(_ gesture: LeftHandGesture) {
-        let wasWave = leftIsWaving
         behavior.leftGesture = gesture
-        behavior.leftHandOverride = nil
-        if case .wave = gesture {
-            if !wasWave { leftWavePhase = 0 }
-            leftIsWaving = true
-        } else {
-            leftIsWaving = false
-        }
     }
     
     private var resolvedLeftHandCooldownDuration: TimeInterval {
@@ -979,46 +984,22 @@ final class StateMachine {
     
     private func resetLeftHandAutopilot(clearTimeCooldown: Bool = false) {
         behavior.leftHandAutoState = .lowered
-        behavior.leftHandWaveReadyAt = nil
-        behavior.leftHandWaveEndAt = nil
-        behavior.leftHandPulseEndAt = nil
-        behavior.leftHandOverride = nil
+        behavior.leftHandTargetAngle = nil
         behavior.leftHandRaisedTimestamp = nil
+        behavior.leftHandPauseEndTime = nil
         behavior.leftHandCooldownActive = false
         behavior.leftHandAutopilotArmed = false
         if clearTimeCooldown { behavior.leftHandCooldownUntil = nil }
         setLeftGesture(.down)
     }
     
-    private var leftHandPulseEnabled: Bool {
-        sanitizedLeftHandPulseBackDelta > 0 || sanitizedLeftHandPulseForwardDelta > 0
-    }
-    
-    private var sanitizedLeftHandPulseBackDelta: Double { max(0, settings.leftHandPulseBackDelta) }
-    private var sanitizedLeftHandPulseForwardDelta: Double { max(0, settings.leftHandPulseForwardDelta) }
     private var leftHandTimeoutEnabled: Bool { settings.leftHandMaxRaisedDuration > 0 }
+    
     private func isLeftHandTimeCooldownActive(now: Date) -> Bool {
         guard let until = behavior.leftHandCooldownUntil else { return false }
         if now < until { return true }
         behavior.leftHandCooldownUntil = nil
         return false
-    }
-    
-    private func setLeftHandOverride(toNormalized value: Double?) {
-        if let value {
-            behavior.leftHandOverride = configuration.leftHand.logicalRange.clamp(value)
-        } else {
-            behavior.leftHandOverride = nil
-        }
-    }
-
-    private func applyLeftHandPulse(offset: Double) {
-        guard leftHandPulseEnabled else {
-            setLeftHandOverride(toNormalized: nil)
-            return
-        }
-        let top = configuration.leftHand.logicalRange.upperBound
-        setLeftHandOverride(toNormalized: top + offset)
     }
 
     private func armLeftHandAutopilotIfEligible(now: Date) {
@@ -1035,121 +1016,162 @@ final class StateMachine {
     private func enterLeftHandCooldown(now: Date) {
         behavior.leftHandCooldownActive = true
         behavior.leftHandAutoState = .lowered
-        behavior.leftHandWaveReadyAt = nil
-        behavior.leftHandWaveEndAt = nil
-        behavior.leftHandPulseEndAt = nil
+        behavior.leftHandTargetAngle = nil
         behavior.leftHandRaisedTimestamp = nil
+        behavior.leftHandPauseEndTime = nil
         startLeftHandCooldown(now: now)
-        setLeftHandOverride(toNormalized: nil)
         setLeftGesture(.down)
         behavior.leftHandAutopilotArmed = false
+        logState("leftHand.cooldown")
     }
 
-    private func startLeftHandPulseBack(now: Date) {
-        setLeftGesture(.up)
-        behavior.leftHandPulseEndAt = now + settings.leftHandPulseDuration
-        applyLeftHandPulse(offset: -sanitizedLeftHandPulseBackDelta)
+    private func setLeftHandTarget(angle: Double, speed: Double) {
+        behavior.leftHandTargetAngle = angle
+        leftHandChannel.setVelocity(speed)
+        leftHandChannel.move(toLogical: angle)
+        logState("leftHand.target", values: ["angle": angle, "speed": speed])
     }
 
-    private func startLeftHandPulseForward(now: Date) {
-        setLeftGesture(.up)
-        behavior.leftHandPulseEndAt = now + settings.leftHandPulseDuration
-        applyLeftHandPulse(offset: sanitizedLeftHandPulseForwardDelta)
+    private func hasReachedTarget(measured: Double, target: Double) -> Bool {
+        abs(measured - target) <= settings.leftHandPositionTolerance
+    }
+
+    private func handleLeftHandPositionUpdate(angle: Double, now: Date) {
+        guard let target = behavior.leftHandTargetAngle else { return }
+        
+        if hasReachedTarget(measured: angle, target: target) {
+            logState("leftHand.reached", values: ["angle": angle])
+            
+            switch behavior.leftHandAutoState {
+            case .raising:
+                // Start waving
+                let cycles = max(1, settings.leftHandWaveCycles)
+                behavior.leftHandAutoState = .waving(cyclesRemaining: cycles, phase: .movingDown)
+                let maxAngle = configuration.leftHand.logicalRange.upperBound
+                let waveTarget = maxAngle - settings.leftHandWaveBackAngle
+                setLeftHandTarget(angle: waveTarget, speed: settings.leftHandWaveSpeed)
+                logState("leftHand.startWaving", values: ["cycles": cycles])
+                
+            case .waving(let cyclesRemaining, let phase):
+                let maxAngle = configuration.leftHand.logicalRange.upperBound
+                let waveTarget = maxAngle - settings.leftHandWaveBackAngle
+                
+                switch phase {
+                case .movingDown:
+                    // Move back up
+                    behavior.leftHandAutoState = .waving(cyclesRemaining: cyclesRemaining, phase: .movingUp)
+                    setLeftHandTarget(angle: maxAngle, speed: settings.leftHandWaveSpeed)
+                    
+                case .movingUp:
+                    let newCyclesRemaining = cyclesRemaining - 1
+                    if newCyclesRemaining > 0 {
+                        // Continue waving - move down again
+                        behavior.leftHandAutoState = .waving(cyclesRemaining: newCyclesRemaining, phase: .movingDown)
+                        setLeftHandTarget(angle: waveTarget, speed: settings.leftHandWaveSpeed)
+                    } else {
+                        // Waving complete, pause at top
+                        behavior.leftHandAutoState = .pausingAtTop
+                        behavior.leftHandPauseEndTime = now + settings.leftHandPauseDuration
+                        logState("leftHand.pauseAtTop", values: ["duration": settings.leftHandPauseDuration])
+                    }
+                }
+                
+            case .lowering:
+                // Reached lowered position
+                enterLeftHandCooldown(now: now)
+                
+            default:
+                break
+            }
+        }
     }
     
     private func updateLeftHandAutopilot(now: Date) {
         let trackingActive = (behavior.focusStart != nil)
+        
+        // If not tracking, ensure hand is lowered
         guard trackingActive else {
             if behavior.leftHandAutoState != .lowered || behavior.leftHandCooldownActive {
-                resetLeftHandAutopilot()
+                // Start lowering if not already lowered
+                if behavior.leftHandAutoState != .lowered && behavior.leftHandAutoState != .lowering {
+                    behavior.leftHandAutoState = .lowering
+                    let minAngle = configuration.leftHand.logicalRange.lowerBound
+                    setLeftHandTarget(angle: minAngle, speed: settings.leftHandLowerSpeed)
+                    logState("leftHand.loweringDueToTrackingloss")
+                }
             }
             return
         }
+        
+        // Check if autopilot is engaged
         let autopilotEngaged = behavior.leftHandAutopilotArmed || behavior.leftHandAutoState != .lowered
         guard autopilotEngaged else { return }
+        
         if isLeftHandTimeCooldownActive(now: now) { return }
         if behavior.leftHandCooldownActive { return }
+        
+        // Check max raised duration timeout
         if leftHandTimeoutEnabled,
            behavior.leftHandAutoState != .lowered,
            let start = behavior.leftHandRaisedTimestamp,
            now.timeIntervalSince(start) >= settings.leftHandMaxRaisedDuration {
-            enterLeftHandCooldown(now: now)
+            behavior.leftHandAutoState = .lowering
+            let minAngle = configuration.leftHand.logicalRange.lowerBound
+            setLeftHandTarget(angle: minAngle, speed: settings.leftHandLowerSpeed)
+            logState("leftHand.loweringDueToTimeout")
             return
         }
+        
         switch behavior.leftHandAutoState {
         case .lowered:
             guard behavior.leftHandAutopilotArmed else { return }
             behavior.leftHandAutopilotArmed = false
             behavior.leftHandAutoState = .raising
-            behavior.leftHandWaveReadyAt = now + settings.leftHandRaiseDelay
-            behavior.leftHandWaveEndAt = nil
-            behavior.leftHandPulseEndAt = nil
             behavior.leftHandRaisedTimestamp = now
+            let maxAngle = configuration.leftHand.logicalRange.upperBound
+            setLeftHandTarget(angle: maxAngle, speed: settings.leftHandRaiseSpeed)
             setLeftGesture(.up)
+            logState("leftHand.raising")
+            
         case .raising:
-            guard let ready = behavior.leftHandWaveReadyAt else { return }
-            if now >= ready {
-                behavior.leftHandAutoState = .waving
-                behavior.leftHandWaveReadyAt = nil
-                behavior.leftHandWaveEndAt = now + settings.leftHandWaveDuration
-                setLeftGesture(.wave(amplitude: settings.leftHandWaveAmplitude, speed: settings.leftHandWaveSpeed))
-            }
+            // Waiting for servo to reach top position
+            // Position observer will trigger state transition
+            break
+            
         case .waving:
-            guard let end = behavior.leftHandWaveEndAt else { return }
-            if now >= end {
-                behavior.leftHandWaveEndAt = nil
-                if leftHandPulseEnabled {
-                    behavior.leftHandAutoState = .pulseBack
-                    startLeftHandPulseBack(now: now)
-                } else {
-                    behavior.leftHandAutoState = .raised
-                    setLeftHandOverride(toNormalized: nil)
-                    setLeftGesture(.up)
-                }
+            // Waiting for servo to reach wave position
+            // Position observer handles state transitions
+            break
+            
+        case .pausingAtTop:
+            // Check if pause is complete
+            guard let pauseEnd = behavior.leftHandPauseEndTime else { return }
+            if now >= pauseEnd {
+                behavior.leftHandPauseEndTime = nil
+                behavior.leftHandAutoState = .lowering
+                let minAngle = configuration.leftHand.logicalRange.lowerBound
+                setLeftHandTarget(angle: minAngle, speed: settings.leftHandLowerSpeed)
+                logState("leftHand.lowering")
             }
-        case .pulseBack:
-            guard let end = behavior.leftHandPulseEndAt else { return }
-            if now >= end {
-                behavior.leftHandPulseEndAt = nil
-                if sanitizedLeftHandPulseForwardDelta > 0 {
-                    behavior.leftHandAutoState = .pulseForward
-                    startLeftHandPulseForward(now: now)
-                } else {
-                    behavior.leftHandAutoState = .raised
-                    setLeftHandOverride(toNormalized: nil)
-                    setLeftGesture(.up)
-                }
-            }
-        case .pulseForward:
-            guard let end = behavior.leftHandPulseEndAt else { return }
-            if now >= end {
-                behavior.leftHandPulseEndAt = nil
-                behavior.leftHandAutoState = .raised
-                setLeftHandOverride(toNormalized: nil)
-                setLeftGesture(.up)
-            }
-        case .raised:
+            
+        case .lowering:
+            // Waiting for servo to reach bottom position
+            // Position observer will handle transition to cooldown
             break
         }
     }
     
     private func leftHandValue(deltaTime: TimeInterval) -> Double {
-        if let override = behavior.leftHandOverride {
-            return override
-        }
+        // The position is now controlled directly via setLeftHandTarget
+        // This function just returns the gesture value for fallback
         switch behavior.leftGesture {
         case .down:
             return configuration.leftHand.logicalRange.lowerBound
         case .up:
             return configuration.leftHand.logicalRange.upperBound
-        case .wave(let amplitude, let speed):
-            let safeSpeed = max(speed, 0.2)
-            leftWavePhase = (leftWavePhase + deltaTime * safeSpeed * 2 * .pi).truncatingRemainder(dividingBy: 2 * .pi)
-            let span = min(amplitude, configuration.leftHand.logicalRange.span)
-            let top = configuration.leftHand.logicalRange.upperBound
-            let bottom = max(configuration.leftHand.logicalRange.lowerBound, top - span)
-            let normalized = (sin(leftWavePhase) + 1) * 0.5
-            return bottom + normalized * (top - bottom)
+        case .wave:
+            // Wave gesture is no longer used - handled by state machine
+            return configuration.leftHand.logicalRange.upperBound
         }
     }
     
@@ -1165,7 +1187,10 @@ final class StateMachine {
     private func applyPose() {
         bodyChannel.move(toLogical: pose.bodyAngle)
         headChannel.move(toLogical: pose.headAngle)
-        leftHandChannel.move(toLogical: pose.leftHand)
+        // Only apply left hand pose if autopilot is not actively controlling it
+        if behavior.leftHandAutoState == .lowered && behavior.leftHandTargetAngle == nil {
+            leftHandChannel.move(toLogical: pose.leftHand)
+        }
         rightHandChannel.move(toLogical: pose.rightHand)
     }
     
@@ -1226,13 +1251,6 @@ final class StateMachine {
         rightHandChannel.shutdown()
         headChannel.shutdown()
         bodyChannel.shutdown()
-    }
-}
-
-private extension StateMachine.LeftHandGesture {
-    var isWave: Bool {
-        if case .wave = self { return true }
-        return false
     }
 }
 
@@ -1298,6 +1316,13 @@ private final class ServoChannel {
     }
     
     func move(toLogical value: Double) { move(toLogical: value, force: false) }
+    
+    func setVelocity(_ velocity: Double) {
+        guard isOpen else { return }
+        let clampedVelocity = clamp(velocity, min: try? servo.getMinVelocityLimit(), max: try? servo.getMaxVelocityLimit())
+        perform("setVelocityLimit") { try servo.setVelocityLimit(clampedVelocity) }
+        logTelemetry("servo.velocitySet", values: ["velocity": clampedVelocity])
+    }
     
     func shutdown() {
         guard isOpen else { return }
