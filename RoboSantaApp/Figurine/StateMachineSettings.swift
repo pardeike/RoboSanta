@@ -199,10 +199,40 @@ extension StateMachine {
                 figurineConfiguration: configuration
             )
         }
+
+        /// Returns the same settings but with a different camera horizontal FOV (deg).
+        func withCameraHorizontalFOV(_ fovDeg: Double) -> Settings {
+            withFigurineConfiguration(figurineConfiguration.withCameraHorizontalFOV(fovDeg))
+        }
     }
 }
 
 // MARK: - Pre-set figurine configuration
+
+extension StateMachine.FigurineConfiguration {
+    /// Returns the same configuration but with a new camera horizontal FOV (deg).
+    func withCameraHorizontalFOV(_ fovDeg: Double) -> Self {
+        .init(
+            leftHand: leftHand,
+            rightHand: rightHand,
+            head: head,
+            body: body,
+            idleBehavior: idleBehavior,
+            trackingBehavior: .init(
+                holdDuration: trackingBehavior.holdDuration,
+                headFollowRate: trackingBehavior.headFollowRate,
+                bodyFollowRate: trackingBehavior.bodyFollowRate,
+                cameraHorizontalFOV: fovDeg,
+                deadband: trackingBehavior.deadband,
+                predictionSmoothing: trackingBehavior.predictionSmoothing
+            ),
+            leftHandCooldownDuration: leftHandCooldownDuration,
+            headContributionRatio: headContributionRatio,
+            loopInterval: loopInterval,
+            attachmentTimeout: attachmentTimeout
+        )
+    }
+}
 
 extension StateMachine.ServoChannelConfiguration {
     /// Left hand servo setup (channel, range, speed).

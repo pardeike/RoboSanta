@@ -25,6 +25,18 @@ final class CameraManager: NSObject, ObservableObject {
     private var visionBusy = false
     private let visionQueue = DispatchQueue(label: "cam.vision")
 
+    @Published var portraitModeEnabled = false {
+        didSet { applyOrientationMode() }
+    }
+
+    private var visionOrientation: CGImagePropertyOrientation {
+        portraitModeEnabled ? .right : .up
+    }
+
+    private var rotationAngle: Double {
+        portraitModeEnabled ? 90 : 0
+    }
+
     // MARK: Lifecycle
     
     func start() {
@@ -71,6 +83,7 @@ final class CameraManager: NSObject, ObservableObject {
             } catch {
                 print("Input error: \(error)")
             }
+            self.applyOrientationAngleLocked()
             self.session.commitConfiguration()
         }
     }
@@ -94,11 +107,7 @@ final class CameraManager: NSObject, ObservableObject {
         videoOutput.setSampleBufferDelegate(self, queue: videoQueue)
         if session.canAddOutput(videoOutput) { session.addOutput(videoOutput) }
 
-        for connection in session.connections {
-            guard connection.isVideoRotationAngleSupported(90) else { continue }
-            connection.videoRotationAngle = 90
-        }
-
+        applyOrientationAngleLocked()
         session.commitConfiguration()
 
         // some optional runtime tuning
@@ -239,6 +248,22 @@ final class CameraManager: NSObject, ObservableObject {
         let value = Double(normalized * 2)
         return max(-1.0, min(1.0, value))
     }
+
+    private func applyOrientationMode() {
+        sessionQueue.async {
+            self.session.beginConfiguration()
+            self.applyOrientationAngleLocked()
+            self.session.commitConfiguration()
+        }
+    }
+
+    private func applyOrientationAngleLocked() {
+        let angle = rotationAngle
+        for connection in session.connections {
+            guard connection.isVideoRotationAngleSupported(angle) else { continue }
+            connection.videoRotationAngle = angle
+        }
+    }
 }
 
 // MARK: - Capture delegate + Vision
@@ -255,9 +280,8 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         let faceReq = VNDetectFaceRectanglesRequest()
         faceReq.revision = VNDetectFaceRectanglesRequest.currentRevision
 
-        // Camera is rotated 90° counter-clockwise (portrait), so use .right orientation
-        // .right means the image top is on the right side (90° CCW rotation)
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
+        // Use landscape by default; enable portrait mode when the camera is rotated 90° CCW.
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: visionOrientation, options: [:])
 
         visionQueue.async {
             defer { self.visionBusy = false }

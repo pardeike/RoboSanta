@@ -3,7 +3,18 @@ import AVFoundation
 import SwiftUI
 import Ollama
 
-let santa = StateMachine()
+/// Set to true to keep the legacy 90° portrait camera rotation; landscape is default.
+private let portraitCameraMode = false
+/// Horizontal FOV (deg) when the camera runs landscape.
+private let cameraFOVLandscapeDeg: Double = 90
+/// Horizontal FOV (deg) when the camera is rotated 90° CCW (portrait). Use your camera's vertical FOV.
+private let cameraFOVPortraitDeg: Double = 60
+
+let santa = StateMachine(
+    settings: StateMachine.Settings.default.withCameraHorizontalFOV(
+        portraitCameraMode ? cameraFOVPortraitDeg : cameraFOVLandscapeDeg
+    )
+)
 
 @available(macOS 11.0, *)
 struct MinimalApp: App {
@@ -12,7 +23,10 @@ struct MinimalApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(camera)
-                .onAppear { camera.start() }
+                .onAppear {
+                    camera.portraitModeEnabled = portraitCameraMode
+                    camera.start()
+                }
                 .onDisappear { camera.stop() }
         }
     }
@@ -166,7 +180,5 @@ while true {
 
 functions.engageMotor(false)
 */
-
-
 
 
