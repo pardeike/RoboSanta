@@ -5,14 +5,10 @@ import Ollama
 
 /// Set to true to keep the legacy 90° portrait camera rotation; landscape is default.
 private let portraitCameraMode = false
-/// Horizontal FOV (deg) when the camera runs landscape.
-private let cameraFOVLandscapeDeg: Double = 90
-/// Horizontal FOV (deg) when the camera is rotated 90° CCW (portrait). Use your camera's vertical FOV.
-private let cameraFOVPortraitDeg: Double = 60
 
 let santa = StateMachine(
     settings: StateMachine.Settings.default.withCameraHorizontalFOV(
-        portraitCameraMode ? cameraFOVPortraitDeg : cameraFOVLandscapeDeg
+        portraitCameraMode ? 60 : 90
     )
 )
 
