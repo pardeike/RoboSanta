@@ -156,7 +156,7 @@ class TTSServer {
         
         let task = session.dataTask(with: url) { _, response, error in
             // Server is reachable if we get any HTTP response (including 404)
-            if error == nil, let httpResponse = response as? HTTPURLResponse {
+            if error == nil, response is HTTPURLResponse {
                 reachable = true
             }
             semaphore.signal()
