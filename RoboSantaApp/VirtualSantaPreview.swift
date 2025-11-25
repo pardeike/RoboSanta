@@ -16,6 +16,17 @@ final class SantaPreviewRenderer {
     private let leftArmPivot = SCNNode()
     private let rightArmPivot = SCNNode()
     private let personNode = SCNNode()
+    private let personHeadNode = SCNNode()
+    private let personBodyNode = SCNNode()
+    private let personHeadRadius: CGFloat = 0.24
+    private let personDistance: Float = 1.6
+    private let personWalkHalfWidth: Float = 0.8 * 3 // widened walking span
+    private let personFloorHeight: CGFloat = 0.002
+    private lazy var personMaterial: SCNMaterial = {
+        let mat = material(color: NSColor(calibratedRed: 0.1, green: 0.7, blue: 0.35, alpha: 0.4))
+        mat.emission.contents = NSColor(calibratedRed: 0.2, green: 0.9, blue: 0.5, alpha: 0.25)
+        return mat
+    }()
     private var headCenterHeight: Float = 1.0
     private var baseRadius: Double = 1.0
     private var baseAzimuth: Double = 0.0
@@ -44,9 +55,9 @@ final class SantaPreviewRenderer {
         }
         personNode.isHidden = false
         let clamped = offset.clamped(to: -1...1)
-        let x = Float(clamped * 0.8)  // span in meters across the front arc
+        let x = Float(clamped) * personWalkHalfWidth
         let y: Float = headCenterHeight
-        let z: Float = 1.6           // distance in front of Santa
+        let z: Float = personDistance // distance in front of Santa
         personNode.position = SCNVector3(x, y, z)
     }
     
@@ -141,7 +152,7 @@ final class SantaPreviewRenderer {
         let baseRadius: CGFloat = 0.45
         let baseHeight: CGFloat = 0.25
         let bodyRadius: CGFloat = 0.45
-        let bodyHeight: CGFloat = 1.1
+        var bodyHeight: CGFloat = 1.1
         let headRadius: CGFloat = 0.32
         let armRadius: CGFloat = 0.14 // thicker arms for better visibility
         let armLength: CGFloat = 0.75
@@ -223,16 +234,50 @@ final class SantaPreviewRenderer {
         rightArmPivot.addChildNode(rightArm)
         
         // Virtual person marker in front of Santa.
-        let personHead = SCNSphere(radius: 0.24)
-        personHead.firstMaterial = material(color: NSColor(calibratedRed: 0.1, green: 0.7, blue: 0.35, alpha: 0.4))
-        personHead.firstMaterial?.emission.contents = NSColor(calibratedRed: 0.2, green: 0.9, blue: 0.5, alpha: 0.25)
-        personNode.geometry = personHead
-        personNode.position = SCNVector3(0, headCenterHeight, 1.6)
+        let personHead = SCNSphere(radius: personHeadRadius)
+        personHead.firstMaterial = personMaterial
+        personHeadNode.geometry = personHead
+        personHeadNode.position = SCNVector3Zero
+        
+        let availableHeight = CGFloat(headCenterHeight) - personHeadRadius - personFloorHeight
+        bodyHeight = max(0.001, availableHeight)
+        let bodySize = personHeadRadius * 2 * 1.2 // slightly larger than the head
+        let personBody = SCNBox(width: bodySize, height: bodyHeight, length: bodySize, chamferRadius: 0)
+        personBody.firstMaterial = personMaterial
+        personBodyNode.geometry = personBody
+        personBodyNode.position = SCNVector3(
+            0,
+            -Float(personHeadRadius + bodyHeight / 2),
+            0
+        )
+        personBodyNode.castsShadow = false
+        
+        personNode.addChildNode(personHeadNode)
+        personNode.addChildNode(personBodyNode)
+        personNode.position = SCNVector3(0, headCenterHeight, personDistance)
         personNode.isHidden = true
         scene.rootNode.addChildNode(personNode)
+        buildPersonArea()
     }
     
     // MARK: - Helpers
+    
+    private func buildPersonArea() {
+        let floorWidth = CGFloat(personWalkHalfWidth * 2) // matches walking span
+        let floorLength = personHeadRadius * 4            // twice the head diameter
+        
+        let box = SCNBox(width: floorWidth, height: personFloorHeight, length: floorLength, chamferRadius: 0)
+        let material = SCNMaterial()
+        material.diffuse.contents = NSColor(calibratedWhite: 0.78, alpha: 1.0)
+        material.roughness.contents = 0.8
+        material.metalness.contents = 0.0
+        box.firstMaterial = material
+        
+        let node = SCNNode(geometry: box)
+        node.position = SCNVector3(0, Float(personFloorHeight / 2), personDistance)
+        node.castsShadow = false
+        scene.rootNode.addChildNode(node)
+    }
     
     private func armAngle(for handValue: Double) -> Double {
         let clamped = handValue.clamped(to: 0...1)
