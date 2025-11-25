@@ -232,13 +232,17 @@ final class CameraManager: NSObject, ObservableObject {
             lastFaceTimestamp = Date()
             let offset = horizontalOffset(for: candidate.rect, width: width)
             let mirrored = videoOutput.connection(with: .video)?.isVideoMirrored == true
-            santa.send(.personDetected(relativeOffset: mirrored ? -offset : offset))
+            Task { @MainActor in
+                coordinator.send(.personDetected(relativeOffset: mirrored ? -offset : offset))
+            }
         } else {
             guard hasActiveFace else { return }
             if let last = lastFaceTimestamp, Date().timeIntervalSince(last) < lostThreshold { return }
             hasActiveFace = false
             lastFaceTimestamp = nil
-            santa.send(.personLost)
+            Task { @MainActor in
+                coordinator.send(.personLost)
+            }
         }
     }
     

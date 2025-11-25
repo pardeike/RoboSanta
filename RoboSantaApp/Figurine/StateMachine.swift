@@ -1288,17 +1288,3 @@ private func randomInterval(in range: ClosedRange<TimeInterval>) -> TimeInterval
 }
 
 private func lerp(_ start: Double, _ end: Double, t: Double) -> Double { start + (end - start) * t }
-
-private extension Double {
-    func clamped(to range: ClosedRange<Double>) -> Double {
-        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
-    }
-}
-
-private extension ClosedRange where Bound == Double {
-    var span: Double { upperBound - lowerBound }
-    var midPoint: Double { (lowerBound + upperBound) / 2 }
-    func clamp(_ value: Double) -> Double {
-        Swift.min(Swift.max(value, lowerBound), upperBound)
-    }
-}
