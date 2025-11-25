@@ -27,3 +27,6 @@ RoboSantaApp/telemetry.json
 __pycache__/
 *.pyc
 *.pyo
+
+# Other
+robo-run.log

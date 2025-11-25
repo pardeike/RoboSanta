@@ -11,7 +11,7 @@ An interactive Santa Claus animatronic figurine for office corridors that:
 - Speaks using text-to-speech
 - Controls physical servos for head, body, and hand movements
 
-**Technology**: Swift 6, macOS, Phidget hardware, Python TTS, Apple Vision framework
+**Technology**: Swift 5, macOS, Phidget hardware, Python TTS, Apple Vision framework
 
 **Key Goal**: Entertain people walking by with engaging, AI-generated interactions in Swedish.
 
@@ -59,7 +59,7 @@ An interactive Santa Claus animatronic figurine for office corridors that:
 
 ### Critical Files for Understanding
 
-1. **App.swift** (173 lines)
+1. **App.swift** (180 lines)
    - Entry point and orchestration
    - AI integration selection
    - Content generation loop
@@ -71,15 +71,22 @@ An interactive Santa Claus animatronic figurine for office corridors that:
    - Gesture state management
    - Most complex file in project
 
-3. **CameraManager.swift** (300+ lines)
+3. **CameraManager.swift** (308 lines)
    - Face detection using Vision
    - Offset calculation for tracking
    - Integration with StateMachine
 
-4. **Integrations/Shared.swift** (147 lines)
-   - `Think` protocol: AI text generation
-   - `SantaVoice` protocol: TTS interface
-   - Utility functions
+4. **Tools.swift** (146 lines)
+   - `Think` and `SantaVoice` protocols
+   - Helper functions (keychain lookup, text cleanup, quiz fixing)
+
+5. **Integrations/Shared.swift** (51 lines)
+   - Prompt templates
+   - Provider-agnostic generation options
+   - JSON schema helpers for Ollama formatting
+
+6. **Models/** (`Model.swift`, `Property.swift`)
+   - Schema definitions for Apple FoundationModels dynamic generation
 
 ### Directory Structure
 
@@ -331,13 +338,7 @@ If you need to change hardware behavior, work in:
 
 ### 2. Force Unwrapping Issues
 
-Several places use `try!` or `!` which will crash:
-
-```swift
-let player = try! AVAudioPlayer(contentsOf: file)  // ⚠️ Will crash if file missing
-```
-
-**When you see these**, consider refactoring to proper error handling unless you're certain they're safe.
+There are still `try!` calls when building Ollama option maps and JSON schemas (e.g., `Integrations/OllamaThink.swift`, `Integrations/Shared.swift`). They are likely safe but will crash on unexpected input; prefer regular `try` if touching those paths.
 
 ### 3. Hardcoded Paths
 
@@ -648,6 +649,19 @@ When stuck:
 3. Enable verbose logging to understand behavior
 4. Test incrementally with small changes
 5. Ask human maintainer for hardware-specific questions
+
+## 🧰 CLI Build & Run (Codex default)
+- Stay in repo root; use full Xcode via env var: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`
+- Build debug app: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -scheme RoboSantaApp -project RoboSanta.xcodeproj -configuration Debug -destination 'platform=macOS' -derivedDataPath build build`
+- Launch with terminal logs: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer ./build/Build/Products/Debug/RoboSanta.app/Contents/MacOS/RoboSanta` (or `open ./build/Build/Products/Debug/RoboSanta.app`)
+- Optional one-time switch: `sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer` to drop the env var; needs admin.
+- Requires logged-in macOS session for camera/USB permissions; no headless support.
+- Async run + logging to `robo-run.log` from repo root:
+  - Clear log: `: > robo-run.log`
+  - Start unified log stream to file: `/usr/bin/log stream --style compact --process RoboSanta > robo-run.log & echo $! > .robo-log.pid`
+  - Launch app (append stdout/stderr to same file): `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer nohup ./build/Build/Products/Debug/RoboSanta.app/Contents/MacOS/RoboSanta >> robo-run.log 2>&1 & echo $! > .robo-app.pid`
+  - Watch logs: `tail -f robo-run.log`
+  - Stop: `kill $(cat .robo-app.pid) $(cat .robo-log.pid)` (or kill PIDs printed by the start commands)
 
 ---
 
