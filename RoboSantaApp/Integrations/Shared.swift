@@ -49,3 +49,9 @@ extension Model {
         ]
     }
 }
+
+extension ProcessInfo {
+    static var isRunningInSwiftUIPreview: Bool {
+        ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+    }
+}
