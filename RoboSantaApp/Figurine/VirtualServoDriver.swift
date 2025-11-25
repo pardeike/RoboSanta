@@ -91,11 +91,3 @@ struct VirtualServoDriverFactory: ServoDriverFactory {
         VirtualServoDriver(configuration: config)
     }
 }
-
-// MARK: - Private extension
-
-private extension ClosedRange where Bound == Double {
-    func clamped(_ value: Double) -> Double {
-        Swift.min(Swift.max(value, lowerBound), upperBound)
-    }
-}

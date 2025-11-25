@@ -30,7 +30,7 @@ final class VirtualDetectionSource: PersonDetectionSource {
     private let detectionSubject = PassthroughSubject<DetectionFrame, Never>()
     private var timer: Timer?
     private var phase: Double = 0
-    private var rng: any RandomNumberGenerator
+    private var rng: RandomGenerator
     
     var detectionFrames: AnyPublisher<DetectionFrame, Never> {
         detectionSubject.eraseToAnyPublisher()
@@ -46,9 +46,9 @@ final class VirtualDetectionSource: PersonDetectionSource {
         self.frameInterval = 1.0 / frameRate
         
         if let seed = config.seed {
-            self.rng = SplitMix64(seed: seed)
+            self.rng = RandomGenerator(splitMix: SplitMix64(seed: seed))
         } else {
-            self.rng = SystemRandomNumberGenerator()
+            self.rng = RandomGenerator()
         }
     }
     
@@ -78,7 +78,7 @@ final class VirtualDetectionSource: PersonDetectionSource {
         
         // Create detection frame
         let faces: [DetectedFace]
-        if Double.random(in: 0...1, using: &rng) < config.presenceProbability {
+        if rng.nextDouble() < config.presenceProbability {
             let boundingBox = CGRect(
                 x: (1.0 + offset) / 2.0 - faceSize / 2.0,
                 y: 0.5 - faceSize / 2.0,
@@ -118,5 +118,36 @@ struct SplitMix64: RandomNumberGenerator {
         z = (z ^ (z >> 30)) &* 0xbf58476d1ce4e5b9
         z = (z ^ (z >> 27)) &* 0x94d049bb133111eb
         return z ^ (z >> 31)
+    }
+}
+
+/// A wrapper type to avoid existential overhead when using RandomNumberGenerator.
+/// Uses either a seeded SplitMix64 or the system generator based on initialization.
+struct RandomGenerator {
+    private enum Kind {
+        case system(SystemRandomNumberGenerator)
+        case splitMix(SplitMix64)
+    }
+    private var kind: Kind
+    
+    init() {
+        self.kind = .system(SystemRandomNumberGenerator())
+    }
+    
+    init(splitMix: SplitMix64) {
+        self.kind = .splitMix(splitMix)
+    }
+    
+    mutating func nextDouble() -> Double {
+        switch kind {
+        case .system(var gen):
+            let value = Double.random(in: 0...1, using: &gen)
+            kind = .system(gen)
+            return value
+        case .splitMix(var gen):
+            let value = Double.random(in: 0...1, using: &gen)
+            kind = .splitMix(gen)
+            return value
+        }
     }
 }

@@ -19,19 +19,45 @@ let coordinator = RuntimeCoordinator(
 struct MinimalApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(coordinator.detectionSource as! VisionDetectionSource)
-                .task {
-                    if let source = coordinator.detectionSource as? VisionDetectionSource {
-                        source.portraitModeEnabled = portraitCameraMode
-                    }
-                    do {
-                        try await coordinator.start()
-                    } catch {
-                        print("Failed to start coordinator: \(error)")
-                    }
+            Group {
+                if let visionSource = coordinator.detectionSource as? VisionDetectionSource {
+                    // Physical mode with camera
+                    ContentView()
+                        .environmentObject(visionSource)
+                } else {
+                    // Virtual mode - show a placeholder view or minimal UI
+                    VirtualModeView()
                 }
+            }
+            .task {
+                if let source = coordinator.detectionSource as? VisionDetectionSource {
+                    source.portraitModeEnabled = portraitCameraMode
+                }
+                do {
+                    try await coordinator.start()
+                    print("🎅 RoboSanta started in \(coordinator.currentRuntime) mode")
+                } catch {
+                    print("Failed to start coordinator: \(error)")
+                }
+            }
         }
+    }
+}
+
+/// Placeholder view for virtual mode (no camera preview needed)
+struct VirtualModeView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("🎅 Virtual Santa Mode")
+                .font(.title)
+            Text("Running without hardware")
+                .foregroundColor(.secondary)
+            Text("Set ROBOSANTA_RUNTIME=physical or use --physical flag for camera mode")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .frame(minWidth: 400, minHeight: 300)
     }
 }
 

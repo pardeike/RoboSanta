@@ -198,18 +198,3 @@ struct PhidgetServoDriverFactory: ServoDriverFactory {
         PhidgetServoDriver(configuration: config)
     }
 }
-
-// MARK: - Private extensions (moved from StateMachine.swift)
-
-private extension Double {
-    func clamped(to range: ClosedRange<Double>) -> Double {
-        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
-    }
-}
-
-private extension ClosedRange where Bound == Double {
-    var span: Double { upperBound - lowerBound }
-    func clamp(_ value: Double) -> Double {
-        Swift.min(Swift.max(value, lowerBound), upperBound)
-    }
-}
