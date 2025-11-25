@@ -55,7 +55,7 @@ struct VirtualModeView: View {
     @State private var pose = StateMachine.FigurinePose()
     @State private var personOffset: Double?
     @State private var zoomScale: Double = 0.5
-    @State private var azimuthDegrees: Double = -60
+    @State private var azimuthDegrees: Double = 0
     
     private func poseLabel(_ title: String, value: String) -> some View {
         VStack(spacing: 4) {
@@ -71,7 +71,7 @@ struct VirtualModeView: View {
     
     private func updateCamera() {
         renderer.updateCamera(
-            azimuthDegrees: 350 - azimuthDegrees,
+            azimuthDegrees: 360 - azimuthDegrees,
             zoomScale: 2 - zoomScale
         )
     }
