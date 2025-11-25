@@ -40,7 +40,15 @@ final class RuntimeCoordinator: ObservableObject {
         rig.stateMachine
     }
     
-    init(runtime: SantaRuntime = .fromEnvironment(), settings: StateMachine.Settings = .default) {
+    convenience init() {
+        self.init(runtime: .fromEnvironment(), settings: .default)
+    }
+    
+    convenience init(settings: StateMachine.Settings) {
+        self.init(runtime: .fromEnvironment(), settings: settings)
+    }
+    
+    init(runtime: SantaRuntime, settings: StateMachine.Settings) {
         self.currentRuntime = runtime
         
         switch runtime {
@@ -69,7 +77,11 @@ final class RuntimeCoordinator: ObservableObject {
     }
     
     /// Switch runtime (requires restart)
-    func switchRuntime(to runtime: SantaRuntime, settings: StateMachine.Settings = .default) async {
+    func switchRuntime(to runtime: SantaRuntime) async {
+        await switchRuntime(to: runtime, settings: .default)
+    }
+    
+    func switchRuntime(to runtime: SantaRuntime, settings: StateMachine.Settings) async {
         if isRunning {
             await stop()
         }
