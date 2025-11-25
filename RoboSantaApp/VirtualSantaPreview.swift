@@ -18,13 +18,15 @@ final class SantaPreviewRenderer {
     private let personNode = SCNNode()
     private let personHeadNode = SCNNode()
     private let personBodyNode = SCNNode()
-    private let personHeadRadius: CGFloat = 0.24
-    private let personDistance: Float = 1.6
-    private let personWalkHalfWidth: Float = 0.8 * 3 // widened walking span
+    private let personHeadRadius: CGFloat = 0.3
+    private let personHeadSegments: Int = 12
+    private let personDistance: Float = 2
+    private let personWalkHalfWidth: Float = 0.8 * 3
     private let personFloorHeight: CGFloat = 0.002
+    private var personHeadCenterHeight: Float = 1.0
     private lazy var personMaterial: SCNMaterial = {
-        let mat = material(color: NSColor(calibratedRed: 0.1, green: 0.7, blue: 0.35, alpha: 0.4))
-        mat.emission.contents = NSColor(calibratedRed: 0.2, green: 0.9, blue: 0.5, alpha: 0.25)
+        let mat = material(color: .green.withAlphaComponent(0.8))
+        mat.fillMode = .fill
         return mat
     }()
     private var headCenterHeight: Float = 1.0
@@ -56,8 +58,8 @@ final class SantaPreviewRenderer {
         personNode.isHidden = false
         let clamped = offset.clamped(to: -1...1)
         let x = Float(clamped) * personWalkHalfWidth
-        let y: Float = headCenterHeight
-        let z: Float = personDistance // distance in front of Santa
+        let y: Float = personHeadCenterHeight
+        let z: Float = personDistance
         personNode.position = SCNVector3(x, y, z)
     }
     
@@ -152,9 +154,9 @@ final class SantaPreviewRenderer {
         let baseRadius: CGFloat = 0.45
         let baseHeight: CGFloat = 0.25
         let bodyRadius: CGFloat = 0.45
-        var bodyHeight: CGFloat = 1.1
+        let bodyHeight: CGFloat = 1.1
         let headRadius: CGFloat = 0.32
-        let armRadius: CGFloat = 0.14 // thicker arms for better visibility
+        let armRadius: CGFloat = 0.14
         let armLength: CGFloat = 0.75
         let cameraStubRadius: CGFloat = 0.06
         let cameraStubLength: CGFloat = 0.16
@@ -166,7 +168,8 @@ final class SantaPreviewRenderer {
         baseNode.position = SCNVector3(0, baseHeight / 2, 0)
         scene.rootNode.addChildNode(baseNode)
         
-        // Body pivot placed at the top of the base; rotating this matches the body servo.
+        // Body pivot placed at the top of the base
+        // Rotating this matches the body servo.
         bodyPivot.position = SCNVector3(0, baseHeight, 0)
         scene.rootNode.addChildNode(bodyPivot)
         
@@ -176,7 +179,8 @@ final class SantaPreviewRenderer {
         bodyNode.position = SCNVector3(0, bodyHeight / 2, 0)
         bodyPivot.addChildNode(bodyNode)
         
-        // Head pivot sits on top of the body and rotates independently of the body yaw.
+        // Head pivot sits on top of the body and
+        // rotates independently of the body yaw.
         headPivot.position = SCNVector3(0, bodyHeight, 0)
         bodyPivot.addChildNode(headPivot)
         
@@ -186,6 +190,7 @@ final class SantaPreviewRenderer {
         headNode.position = SCNVector3(0, headRadius, 0)
         headPivot.addChildNode(headNode)
         headCenterHeight = Float(bodyHeight + headRadius)
+        personHeadCenterHeight = headCenterHeight + Float(personHeadRadius * 2)
         
         // Camera stub on the upper front of the head.
         let cameraStub = SCNCylinder(radius: cameraStubRadius, height: cameraStubLength)
@@ -194,15 +199,13 @@ final class SantaPreviewRenderer {
         stubNode.position = SCNVector3(0, headRadius * 0.4, headRadius + cameraStubLength / 2)
         stubNode.eulerAngles.x = .pi / 2
         headNode.addChildNode(stubNode)
-        
-        // Eyes: slightly embedded blue spheres to show facing direction.
+    
         let eyeRadius: CGFloat = 0.055
-        let eyeDepth: CGFloat = eyeRadius * 0.6 // 60% sunk into the head
-        let eyeOffsetY: CGFloat = 0 // centered vertically on the head sphere
+        let eyeDepth: CGFloat = eyeRadius * 0.6
+        let eyeOffsetY: CGFloat = 0
         let eyeOffsetZ: CGFloat = headRadius - eyeDepth
         let eyeOffsetX: CGFloat = 0.12
-        let eyeMaterial = material(color: NSColor(calibratedRed: 0.16, green: 0.48, blue: 0.94, alpha: 1.0))
-        eyeMaterial.emission.contents = NSColor(calibratedRed: 0.2, green: 0.55, blue: 1.0, alpha: 0.6)
+        let eyeMaterial = material(color: .systemBlue)
         let leftEye = SCNSphere(radius: eyeRadius)
         leftEye.firstMaterial = eyeMaterial
         let leftEyeNode = SCNNode(geometry: leftEye)
@@ -235,26 +238,27 @@ final class SantaPreviewRenderer {
         
         // Virtual person marker in front of Santa.
         let personHead = SCNSphere(radius: personHeadRadius)
+        personHead.segmentCount = personHeadSegments
         personHead.firstMaterial = personMaterial
         personHeadNode.geometry = personHead
         personHeadNode.position = SCNVector3Zero
         
-        let availableHeight = CGFloat(headCenterHeight) - personHeadRadius - personFloorHeight
-        bodyHeight = max(0.001, availableHeight)
-        let bodySize = personHeadRadius * 2 * 1.2 // slightly larger than the head
-        let personBody = SCNBox(width: bodySize, height: bodyHeight, length: bodySize, chamferRadius: 0)
+        let availableHeight = CGFloat(personHeadCenterHeight) - personHeadRadius - personFloorHeight
+        let personBodyHeight = max(0.001, availableHeight)
+        let bodySize = personHeadRadius * 2.2
+        let personBody = SCNBox(width: bodySize, height: personBodyHeight, length: bodySize, chamferRadius: 0)
         personBody.firstMaterial = personMaterial
         personBodyNode.geometry = personBody
         personBodyNode.position = SCNVector3(
             0,
-            -Float(personHeadRadius + bodyHeight / 2),
+            -Float(personHeadRadius + personBodyHeight / 2),
             0
         )
         personBodyNode.castsShadow = false
         
         personNode.addChildNode(personHeadNode)
         personNode.addChildNode(personBodyNode)
-        personNode.position = SCNVector3(0, headCenterHeight, personDistance)
+        personNode.position = SCNVector3(0, personHeadCenterHeight, personDistance)
         personNode.isHidden = true
         scene.rootNode.addChildNode(personNode)
         buildPersonArea()
@@ -263,8 +267,10 @@ final class SantaPreviewRenderer {
     // MARK: - Helpers
     
     private func buildPersonArea() {
-        let floorWidth = CGFloat(personWalkHalfWidth * 2) // matches walking span
-        let floorLength = personHeadRadius * 4            // twice the head diameter
+        let walkSpan = CGFloat(personWalkHalfWidth * 2)
+        let floorDepth = personHeadRadius * 4
+        let floorWidth = walkSpan + floorDepth
+        let floorLength = floorDepth
         
         let box = SCNBox(width: floorWidth, height: personFloorHeight, length: floorLength, chamferRadius: 0)
         let material = SCNMaterial()
@@ -345,7 +351,7 @@ struct VirtualSantaPreview: View {
 struct VirtualSantaPreviewWrapper: View {
     @State private var renderer: SantaPreviewRenderer
     @State private var zoomScale: Double = 0.5
-    @State private var azimuthDegrees: Double = 0
+    @State private var azimuthDegrees: Double = -80
     
     init() {
         let r = SantaPreviewRenderer()
