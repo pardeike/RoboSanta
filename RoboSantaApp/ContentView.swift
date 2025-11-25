@@ -2,7 +2,7 @@ import SwiftUI
 import AVFoundation
 
 struct ContentView: View {
-    @EnvironmentObject var camera: CameraManager
+    @EnvironmentObject var visionSource: VisionDetectionSource
 
     @State private var detectFaces = true
     @State private var detectPeople = true
@@ -13,7 +13,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 8) {
             CameraPreview()
-                .environmentObject(camera)
+                .environmentObject(visionSource)
         }
     }
 }

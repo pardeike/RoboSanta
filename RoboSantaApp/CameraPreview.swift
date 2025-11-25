@@ -12,11 +12,11 @@ final class PreviewHostView: NSView {
 }
 
 struct CameraPreview: NSViewRepresentable {
-    @EnvironmentObject var camera: CameraManager
+    @EnvironmentObject var visionSource: VisionDetectionSource
 
     func makeNSView(context: Context) -> PreviewHostView {
         let v = PreviewHostView()
-        camera.attach(to: v.rootLayer)
+        visionSource.attach(to: v.rootLayer)
         return v
     }
 

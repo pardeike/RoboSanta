@@ -6,7 +6,10 @@ import Ollama
 /// Set to true to keep the legacy 90° portrait camera rotation; landscape is default.
 private let portraitCameraMode = false
 
-let santa = StateMachine(
+/// The runtime coordinator for Santa figurine control.
+/// This replaces the global `santa` StateMachine with a higher-level abstraction.
+@MainActor
+let coordinator = RuntimeCoordinator(
     settings: StateMachine.Settings.default.withCameraHorizontalFOV(
         portraitCameraMode ? 60 : 90
     )
@@ -14,16 +17,20 @@ let santa = StateMachine(
 
 @available(macOS 11.0, *)
 struct MinimalApp: App {
-    @StateObject private var camera = CameraManager()
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(camera)
-                .onAppear {
-                    camera.portraitModeEnabled = portraitCameraMode
-                    camera.start()
+                .environmentObject(coordinator.detectionSource as! VisionDetectionSource)
+                .task {
+                    if let source = coordinator.detectionSource as? VisionDetectionSource {
+                        source.portraitModeEnabled = portraitCameraMode
+                    }
+                    do {
+                        try await coordinator.start()
+                    } catch {
+                        print("Failed to start coordinator: \(error)")
+                    }
                 }
-                .onDisappear { camera.stop() }
         }
     }
 }
@@ -123,14 +130,10 @@ Svara endast med JSON som matchar schemat.
     }
     
     static func main() async {
-        let loopTask = Task.detached(priority: .background) {
-            try await santa.start()
-            // await backgroundLoop()
-        }
+        // Coordinator handles startup via SwiftUI lifecycle
         MinimalApp.main()
         print("Preparing shutdown")
-        loopTask.cancel()
-        _ = await loopTask.result
+        await coordinator.stop()
         print("Done")
     }
 }
