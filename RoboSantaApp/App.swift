@@ -1,6 +1,8 @@
+import Foundation
 import FoundationModels
 import AVFoundation
 import SwiftUI
+import Combine
 import Ollama
 
 /// Set to true to keep the legacy 90° portrait camera rotation; landscape is default.
@@ -28,7 +30,7 @@ struct MinimalApp: App {
                         .environmentObject(visionSource)
                 } else {
                     // Virtual mode - show a placeholder view or minimal UI
-                    VirtualModeView()
+                    VirtualModeView(coordinator: coordinator)
                 }
             }
             .task {
@@ -48,18 +50,73 @@ struct MinimalApp: App {
 
 /// Placeholder view for virtual mode (no camera preview needed)
 struct VirtualModeView: View {
+    @ObservedObject var coordinator: RuntimeCoordinator
+    @State private var renderer = SantaPreviewRenderer()
+    @State private var pose = StateMachine.FigurinePose()
+    @State private var personOffset: Double?
+    @State private var zoomScale: Double = 0.5
+    @State private var azimuthDegrees: Double = -60
+    
+    private func poseLabel(_ title: String, value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.system(.title3, design: .rounded).monospacedDigit())
+                .foregroundColor(.primary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    private func updateCamera() {
+        renderer.updateCamera(
+            azimuthDegrees: 350 - azimuthDegrees,
+            zoomScale: 2 - zoomScale
+        )
+    }
+    
     var body: some View {
         VStack(spacing: 16) {
-            Text("🎅 Virtual Santa Mode")
-                .font(.title)
-            Text("Running without hardware")
-                .foregroundColor(.secondary)
-            Text("Set ROBOSANTA_RUNTIME=physical or use --physical flag for camera mode")
+            VStack(spacing: 4) {
+                Text("🎅 Virtual Santa Mode")
+                    .font(.title2)
+                Text("Live pose driven by the virtual servos")
+                    .foregroundColor(.secondary)
+            }
+            VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, renderer: renderer)
+                .frame(minWidth: 500, minHeight: 420)
+            
+            HStack(spacing: 12) {
+                poseLabel("Body", value: String(format: "%.1f°", pose.bodyAngle))
+                poseLabel("Head", value: String(format: "%.1f°", pose.headAngle))
+                poseLabel("Left arm", value: String(format: "%.2f", pose.leftHand))
+                poseLabel("Right arm", value: String(format: "%.2f", pose.rightHand))
+            }
+            
+            Text("Adjust the camera with the sliders; switch ROBOSANTA_RUNTIME to \"physical\" for camera mode.")
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
         .padding()
-        .frame(minWidth: 400, minHeight: 300)
+        .frame(minWidth: 520, minHeight: 520)
+        .onAppear {
+            let snapshot = coordinator.stateMachine.currentPose()
+            pose = snapshot
+            renderer.apply(pose: snapshot)
+            updateCamera()
+        }
+        .onChange(of: zoomScale) { _, _ in updateCamera() }
+        .onChange(of: azimuthDegrees) { _, _ in updateCamera() }
+        .onReceive(coordinator.poseUpdates.receive(on: RunLoop.main)) { newPose in
+            pose = newPose
+            renderer.apply(pose: newPose)
+        }
+        .onReceive(coordinator.detectionSource.detectionFrames.receive(on: RunLoop.main)) { frame in
+            let candidate = frame.faces.min { abs($0.relativeOffset) < abs($1.relativeOffset) }
+            personOffset = candidate?.relativeOffset
+            renderer.applyPerson(relativeOffset: candidate?.relativeOffset)
+        }
     }
 }
 
@@ -207,5 +264,3 @@ while true {
 
 functions.engageMotor(false)
 */
-
-

@@ -29,6 +29,7 @@ final class TelemetryLogger {
     }
     
     func write(line: String) {
+        if ProcessInfo.isRunningInSwiftUIPreview { return }
         queue.async {
             guard let data = (line + "\n").data(using: .utf8) else { return }
             if self.fileHandle == nil {
@@ -45,6 +46,7 @@ final class TelemetryLogger {
     }
     
     private func prepareFile() {
+        if ProcessInfo.isRunningInSwiftUIPreview { return }
         queue.sync {
             let fm = FileManager.default
             let dir = fileURL.deletingLastPathComponent()
