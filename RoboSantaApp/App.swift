@@ -20,8 +20,9 @@ struct MinimalApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if let visionSource = coordinator.detectionSource as? VisionDetectionSource {
-                    // Physical mode with camera
+                if coordinator.detectionSource.supportsPreview,
+                   let visionSource = coordinator.detectionSource as? VisionDetectionSource {
+                    // Physical mode with camera preview
                     ContentView()
                         .environmentObject(visionSource)
                 } else {

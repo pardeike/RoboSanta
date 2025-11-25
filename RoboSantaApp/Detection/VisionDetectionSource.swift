@@ -38,6 +38,8 @@ final class VisionDetectionSource: NSObject, PersonDetectionSource, ObservableOb
         detectionSubject.eraseToAnyPublisher()
     }
     
+    var supportsPreview: Bool { true }
+    
     private var visionOrientation: CGImagePropertyOrientation {
         portraitModeEnabled ? .right : .up
     }

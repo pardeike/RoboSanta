@@ -16,8 +16,4 @@ extension ClosedRange where Bound == Double {
     func clamp(_ value: Double) -> Double {
         Swift.min(Swift.max(value, lowerBound), upperBound)
     }
-    
-    func clamped(_ value: Double) -> Double {
-        Swift.min(Swift.max(value, lowerBound), upperBound)
-    }
 }

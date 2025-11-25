@@ -36,6 +36,8 @@ final class VirtualDetectionSource: PersonDetectionSource {
         detectionSubject.eraseToAnyPublisher()
     }
     
+    var supportsPreview: Bool { false }
+    
     init(
         config: VirtualPersonConfig = VirtualPersonConfig(),
         frameSize: CGSize = CGSize(width: 1920, height: 1080),

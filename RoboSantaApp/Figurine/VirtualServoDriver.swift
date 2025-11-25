@@ -41,9 +41,9 @@ final class VirtualServoDriver: ServoDriver {
     }
     
     func move(toLogical value: Double) {
-        let clamped = configuration.logicalRange.clamped(value)
-        targetPosition = clamped
-        logTelemetry("servo.command", values: ["target": clamped])
+        let clampedValue = configuration.logicalRange.clamp(value)
+        targetPosition = clampedValue
+        logTelemetry("servo.command", values: ["target": clampedValue])
     }
     
     func setVelocity(_ velocity: Double) {
@@ -71,7 +71,7 @@ final class VirtualServoDriver: ServoDriver {
         }
         
         // Clamp to logical range
-        currentPosition = configuration.logicalRange.clamped(currentPosition)
+        currentPosition = configuration.logicalRange.clamp(currentPosition)
         
         // Notify observer (matches hardware callback pattern)
         positionObserver?(currentPosition)

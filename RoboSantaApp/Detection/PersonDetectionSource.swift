@@ -30,6 +30,9 @@ protocol PersonDetectionSource {
     /// Publisher that emits detection frames
     var detectionFrames: AnyPublisher<DetectionFrame, Never> { get }
     
+    /// Whether this detection source supports UI preview (e.g., camera preview)
+    var supportsPreview: Bool { get }
+    
     /// Start detection
     func start()
     
