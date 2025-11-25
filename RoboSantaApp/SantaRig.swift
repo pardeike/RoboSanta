@@ -5,6 +5,9 @@
 import Foundation
 import Combine
 
+/// Interval for pose update publishing (20 Hz)
+private let poseUpdateInterval: TimeInterval = 0.05
+
 /// High-level interface for figurine control.
 /// Two implementations: PhysicalRig (uses Phidget hardware) and VirtualRig (pure simulation).
 protocol SantaRig {
@@ -64,7 +67,7 @@ final class PhysicalRig: SantaRig {
     }
     
     private func startPosePublisher() {
-        poseTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+        poseTimer = Timer.scheduledTimer(withTimeInterval: poseUpdateInterval, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.poseSubject.send(self.stateMachine.currentPose())
         }
@@ -108,7 +111,7 @@ final class VirtualRig: SantaRig {
     }
     
     private func startPosePublisher() {
-        poseTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+        poseTimer = Timer.scheduledTimer(withTimeInterval: poseUpdateInterval, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.poseSubject.send(self.stateMachine.currentPose())
         }
