@@ -18,9 +18,17 @@ struct VirtualDetectionConfig {
     var frameSize: CGSize = CGSize(width: 1920, height: 1080)
     /// Frame rate for detection updates
     var frameRate: Double = 30.0
+    /// Base face size as a fraction of frame at 1 meter distance.
+    /// Default is 0.2 (20% of frame width at 1 meter).
+    var baseFaceSizeAtOneMeter: Double = 0.2
     
     static let `default` = VirtualDetectionConfig()
 }
+
+/// Conversion factor from normalized amplitude (0..1) to meters.
+/// The legacy VirtualPersonConfig used normalized values where 1.0 = full width.
+/// The actual walk area is approximately 3 meters wide (based on VirtualSantaPreview).
+private let normalizedToMetersConversionFactor: Double = 3.0
 
 /// Virtual detection source that simulates a person walking past.
 /// Uses a PersonGenerator to determine person position and calculates the relative
@@ -58,7 +66,7 @@ final class VirtualDetectionSource: PersonDetectionSource {
     /// Creates an OscillatingPersonGenerator with equivalent settings.
     convenience init(legacyConfig: VirtualPersonConfig) {
         let oscillatingConfig = OscillatingPersonConfig(
-            amplitude: legacyConfig.amplitude * 3.0, // Convert from normalized to meters
+            amplitude: legacyConfig.amplitude * normalizedToMetersConversionFactor,
             period: legacyConfig.period,
             distance: legacyConfig.distance,
             presenceProbability: legacyConfig.presenceProbability,
@@ -114,8 +122,7 @@ final class VirtualDetectionSource: PersonDetectionSource {
             // Check if person is visible in camera frame
             if abs(relativeAngleDeg) <= halfFOV {
                 // Calculate face size based on distance (closer = larger)
-                let baseFaceSize = 0.2  // 20% of frame at 1m
-                let faceSize = baseFaceSize / personState.distance
+                let faceSize = config.baseFaceSizeAtOneMeter / personState.distance
                 
                 // Calculate bounding box position
                 let normalizedX = (1.0 + relativeOffset) / 2.0

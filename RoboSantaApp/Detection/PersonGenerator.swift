@@ -123,7 +123,9 @@ struct WalkThroughPersonConfig {
 /// A person generator that simulates someone walking through the scene.
 /// The person enters from one side, walks across, and exits on the other side.
 struct WalkThroughPersonGenerator: PersonGenerator {
-    private var config: WalkThroughPersonConfig
+    private let originalConfig: WalkThroughPersonConfig
+    private var currentStartPosition: Double
+    private var currentEndPosition: Double
     private var currentPosition: Double
     private var elapsedTime: TimeInterval = 0
     private var state: WalkState = .waiting
@@ -136,7 +138,9 @@ struct WalkThroughPersonGenerator: PersonGenerator {
     }
     
     init(config: WalkThroughPersonConfig = .default) {
-        self.config = config
+        self.originalConfig = config
+        self.currentStartPosition = config.startPosition
+        self.currentEndPosition = config.endPosition
         self.currentPosition = config.startPosition
     }
     
@@ -145,21 +149,21 @@ struct WalkThroughPersonGenerator: PersonGenerator {
         
         switch state {
         case .waiting:
-            if elapsedTime >= config.startDelay {
+            if elapsedTime >= originalConfig.startDelay {
                 state = .walking
             }
             return PersonState.absent
             
         case .walking:
             // Move toward end position
-            let direction = config.endPosition > currentPosition ? 1.0 : -1.0
-            currentPosition += direction * config.walkSpeed * deltaTime
+            let direction = currentEndPosition > currentPosition ? 1.0 : -1.0
+            currentPosition += direction * originalConfig.walkSpeed * deltaTime
             
             // Check if reached destination
-            if (direction > 0 && currentPosition >= config.endPosition) ||
-               (direction < 0 && currentPosition <= config.endPosition) {
-                currentPosition = config.endPosition
-                if config.loopEnabled {
+            if (direction > 0 && currentPosition >= currentEndPosition) ||
+               (direction < 0 && currentPosition <= currentEndPosition) {
+                currentPosition = currentEndPosition
+                if originalConfig.loopEnabled {
                     state = .waitingToLoop
                     elapsedTime = 0
                 } else {
@@ -170,7 +174,7 @@ struct WalkThroughPersonGenerator: PersonGenerator {
             return PersonState(
                 isPresent: true,
                 horizontalPosition: currentPosition,
-                distance: config.distance,
+                distance: originalConfig.distance,
                 facingAngle: nil
             )
             
@@ -178,12 +182,10 @@ struct WalkThroughPersonGenerator: PersonGenerator {
             return PersonState.absent
             
         case .waitingToLoop:
-            if elapsedTime >= config.loopDelay {
-                // Swap start and end for reverse walk
-                let temp = config.startPosition
-                config.startPosition = config.endPosition
-                config.endPosition = temp
-                currentPosition = config.startPosition
+            if elapsedTime >= originalConfig.loopDelay {
+                // Swap start and end for reverse walk (using instance variables)
+                swap(&currentStartPosition, &currentEndPosition)
+                currentPosition = currentStartPosition
                 state = .walking
             }
             return PersonState.absent
@@ -191,7 +193,9 @@ struct WalkThroughPersonGenerator: PersonGenerator {
     }
     
     mutating func reset() {
-        currentPosition = config.startPosition
+        currentStartPosition = originalConfig.startPosition
+        currentEndPosition = originalConfig.endPosition
+        currentPosition = originalConfig.startPosition
         elapsedTime = 0
         state = .waiting
     }
