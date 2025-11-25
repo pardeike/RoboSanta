@@ -215,10 +215,10 @@ final class StateMachine {
     
     private let configuration: FigurineConfiguration
     private let telemetry: TelemetryLogger
-    private let leftHandChannel: ServoChannel
-    private let rightHandChannel: ServoChannel
-    private let headChannel: ServoChannel
-    private let bodyChannel: ServoChannel
+    private let leftHandDriver: ServoDriver
+    private let rightHandDriver: ServoDriver
+    private let headDriver: ServoDriver
+    private let bodyDriver: ServoDriver
     private let settings: Settings
     private let loggingEnabled: Bool
     private let workerQueue = DispatchQueue(label: "RoboSanta.StateMachine", qos: .userInitiated)
@@ -236,32 +236,32 @@ final class StateMachine {
     private var idlePhase: Double = 0
     private var isRunning = false
     
-    init(configuration: FigurineConfiguration = .default, telemetry: TelemetryLogger = .shared, settings: Settings = .default) {
+    init(configuration: FigurineConfiguration = .default, telemetry: TelemetryLogger = .shared, settings: Settings = .default, driverFactory: ServoDriverFactory = PhidgetServoDriverFactory()) {
         let mergedSettings = settings.withFigurineConfiguration(configuration)
         self.settings = mergedSettings
         self.configuration = mergedSettings.figurineConfiguration
         self.telemetry = telemetry
         self.loggingEnabled = mergedSettings.loggingEnabled
         self.behavior = BehaviorState(idleBehavior: self.configuration.idleBehavior)
-        self.leftHandChannel = ServoChannel(configuration: self.configuration.leftHand)
-        self.rightHandChannel = ServoChannel(configuration: self.configuration.rightHand)
-        self.headChannel = ServoChannel(configuration: self.configuration.head)
-        self.bodyChannel = ServoChannel(configuration: self.configuration.body)
-        let telemetry: (String, [String: CustomStringConvertible]) -> Void = { [weak self] event, values in
+        self.leftHandDriver = driverFactory.createDriver(for: self.configuration.leftHand)
+        self.rightHandDriver = driverFactory.createDriver(for: self.configuration.rightHand)
+        self.headDriver = driverFactory.createDriver(for: self.configuration.head)
+        self.bodyDriver = driverFactory.createDriver(for: self.configuration.body)
+        let telemetryLogger: (String, [String: CustomStringConvertible]) -> Void = { [weak self] event, values in
             self?.logEvent(event, values: values)
         }
-        leftHandChannel.setTelemetryLogger(telemetry)
-        rightHandChannel.setTelemetryLogger(telemetry)
-        headChannel.setTelemetryLogger(telemetry)
-        bodyChannel.setTelemetryLogger(telemetry)
-        leftHandChannel.setPositionObserver { [weak self] angle in
+        leftHandDriver.setTelemetryLogger(telemetryLogger)
+        rightHandDriver.setTelemetryLogger(telemetryLogger)
+        headDriver.setTelemetryLogger(telemetryLogger)
+        bodyDriver.setTelemetryLogger(telemetryLogger)
+        leftHandDriver.setPositionObserver { [weak self] angle in
             guard let self else { return }
             self.workerQueue.async {
                 self.behavior.leftHandMeasuredAngle = angle
                 self.handleLeftHandPositionUpdate(angle: angle, now: Date())
             }
         }
-        bodyChannel.setPositionObserver { [weak self] angle in
+        bodyDriver.setPositionObserver { [weak self] angle in
             guard let self else { return }
             self.workerQueue.async {
                 let now = Date()
@@ -269,7 +269,7 @@ final class StateMachine {
                 self.updateStallMeasurement(for: .body, value: angle, now: now)
             }
         }
-        headChannel.setPositionObserver { [weak self] angle in
+        headDriver.setPositionObserver { [weak self] angle in
             guard let self else { return }
             self.workerQueue.async {
                 let now = Date()
@@ -291,7 +291,7 @@ final class StateMachine {
         task?.cancel()
         syncOnWorkerQueue {
             pendingEvents.removeAll(keepingCapacity: true)
-            teardownChannelsLocked()
+            teardownDriversLocked()
         }
     }
     
@@ -303,10 +303,10 @@ final class StateMachine {
                 return
             }
             do {
-                try bodyChannel.open(timeout: configuration.attachmentTimeout)
-                try headChannel.open(timeout: configuration.attachmentTimeout)
-                try leftHandChannel.open(timeout: configuration.attachmentTimeout)
-                try rightHandChannel.open(timeout: configuration.attachmentTimeout)
+                try bodyDriver.open(timeout: configuration.attachmentTimeout)
+                try headDriver.open(timeout: configuration.attachmentTimeout)
+                try leftHandDriver.open(timeout: configuration.attachmentTimeout)
+                try rightHandDriver.open(timeout: configuration.attachmentTimeout)
                 isRunning = true
                 bodyStall = ServoStallState()
                 headStall = ServoStallState()
@@ -317,7 +317,7 @@ final class StateMachine {
                 loopTask = task
             } catch {
                 thrownError = error
-                teardownChannelsLocked()
+                teardownDriversLocked()
             }
         }
         if let error = thrownError { throw error }
@@ -339,7 +339,7 @@ final class StateMachine {
             idlePhase = 0
             bodyStall = ServoStallState()
             headStall = ServoStallState()
-            teardownChannelsLocked()
+            teardownDriversLocked()
         }
     }
     
@@ -1044,8 +1044,8 @@ final class StateMachine {
 
     private func setLeftHandTarget(angle: Double, speed: Double) {
         behavior.leftHandTargetAngle = angle
-        leftHandChannel.setVelocity(speed)
-        leftHandChannel.move(toLogical: angle)
+        leftHandDriver.setVelocity(speed)
+        leftHandDriver.move(toLogical: angle)
         logState("leftHand.target", values: ["angle": angle, "speed": speed])
     }
 
@@ -1202,13 +1202,13 @@ final class StateMachine {
     }
     
     private func applyPose() {
-        bodyChannel.move(toLogical: pose.bodyAngle)
-        headChannel.move(toLogical: pose.headAngle)
+        bodyDriver.move(toLogical: pose.bodyAngle)
+        headDriver.move(toLogical: pose.headAngle)
         // Only apply left hand pose if autopilot is not actively controlling it
         if behavior.leftHandAutoState == .lowered && behavior.leftHandTargetAngle == nil {
-            leftHandChannel.move(toLogical: pose.leftHand)
+            leftHandDriver.move(toLogical: pose.leftHand)
         }
-        rightHandChannel.move(toLogical: pose.rightHand)
+        rightHandDriver.move(toLogical: pose.rightHand)
     }
     
     private func clampCamera(_ heading: Double) -> Double { configuration.cameraRange.clamp(heading) }
@@ -1263,200 +1263,11 @@ final class StateMachine {
         }
     }
 
-    private func teardownChannelsLocked() {
-        leftHandChannel.shutdown()
-        rightHandChannel.shutdown()
-        headChannel.shutdown()
-        bodyChannel.shutdown()
-    }
-}
-
-// MARK: - Servo wrapper
-
-private final class ServoChannel {
-    private let configuration: StateMachine.ServoChannelConfiguration
-    private let servo: RCServo = RCServo()
-    private var attached = false
-    private var currentNormalized: Double?
-    private var isOpen = false
-    private var telemetryLogger: ((String, [String: CustomStringConvertible]) -> Void)?
-    private var positionObserver: ((Double) -> Void)?
-    
-    init(configuration: StateMachine.ServoChannelConfiguration) {
-        self.configuration = configuration
-        setupHandlers()
-    }
-    
-    func setTelemetryLogger(_ logger: @escaping (String, [String: CustomStringConvertible]) -> Void) {
-        telemetryLogger = logger
-    }
-    
-    func setPositionObserver(_ observer: @escaping (Double) -> Void) {
-        positionObserver = observer
-    }
-    
-    func open(timeout: TimeInterval) throws {
-        guard !isOpen else { return }
-        try configure("setChannel") { try servo.setChannel(configuration.channel) }
-        try configure("setIsHubPortDevice") { try servo.setIsHubPortDevice(false) }
-        try configure("setIsLocal") { try servo.setIsLocal(true) }
-        try configure("open") { try servo.open() }
-        do {
-            try waitForAttachment(timeout: timeout)
-            try configure("setMinPosition") { try servo.setMinPosition(0) }
-            try configure("setMaxPosition") { try servo.setMaxPosition(1) }
-            let minPulseLimit = try? servo.getMinPulseWidthLimit()
-            let maxPulseLimit = try? servo.getMaxPulseWidthLimit()
-            let requestedMinPulse = clamp(configuration.pulseRange.lowerBound, min: minPulseLimit, max: maxPulseLimit)
-            var requestedMaxPulse = clamp(configuration.pulseRange.upperBound, min: minPulseLimit, max: maxPulseLimit)
-            if requestedMaxPulse <= requestedMinPulse { requestedMaxPulse = requestedMinPulse + 1 }
-            try configure("setMinPulseWidth") { try servo.setMinPulseWidth(requestedMinPulse) }
-            try configure("setMaxPulseWidth") { try servo.setMaxPulseWidth(requestedMaxPulse) }
-            try configure("setSpeedRampingState") { try servo.setSpeedRampingState(true) }
-            if let velocity = configuration.velocityLimit {
-                let clampedVelocity = clamp(velocity, min: try? servo.getMinVelocityLimit(), max: try? servo.getMaxVelocityLimit())
-                try configure("setVelocityLimit") { try servo.setVelocityLimit(clampedVelocity) }
-            }
-            if let voltage = configuration.voltage {
-                try configure("setVoltage") { try servo.setVoltage(voltage) }
-            }
-            // Move to the home position before engaging so the controller is configured.
-            move(toLogical: configuration.homePosition, force: true)
-            try configure("setEngaged") { try servo.setEngaged(true) }
-            isOpen = true
-        } catch {
-            perform("setEngaged(false)") { try servo.setEngaged(false) }
-            perform("close") { try servo.close() }
-            attached = false
-            throw error
-        }
-    }
-    
-    func move(toLogical value: Double) { move(toLogical: value, force: false) }
-    
-    func setVelocity(_ velocity: Double) {
-        guard isOpen else { return }
-        let clampedVelocity = clamp(velocity, min: try? servo.getMinVelocityLimit(), max: try? servo.getMaxVelocityLimit())
-        perform("setVelocityLimit") { try servo.setVelocityLimit(clampedVelocity) }
-        logTelemetry("servo.velocitySet", values: ["velocity": clampedVelocity])
-    }
-    
-    func shutdown() {
-        guard isOpen else { return }
-        isOpen = false
-        perform("setEngaged(false)") { try servo.setEngaged(false) }
-        perform("close") { try servo.close() }
-        attached = false
-    }
-    
-    private func move(toLogical value: Double, force: Bool) {
-        guard isOpen || force else { return }
-        let normalized = normalizedValue(for: value)
-        guard force || currentNormalized.map({ abs($0 - normalized) > 0.001 }) ?? true else { return }
-        currentNormalized = normalized
-        perform("setTargetPosition") { try servo.setTargetPosition(normalized) }
-        logTelemetry("servo.command", values: ["target": normalized])
-    }
-    
-    private func normalizedValue(for logical: Double) -> Double {
-        let range = configuration.logicalRange
-        let clamped = range.clamp(logical)
-        let normalized = (clamped - range.lowerBound) / range.span
-        switch configuration.orientation {
-        case .normal:   return normalized
-        case .reversed: return 1 - normalized
-        }
-    }
-
-    private func logicalValue(forServoPosition normalized: Double) -> Double {
-        let clamped = normalized.clamped(to: 0...1)
-        let logicalNormalized: Double
-        switch configuration.orientation {
-        case .normal:
-            logicalNormalized = clamped
-        case .reversed:
-            logicalNormalized = 1 - clamped
-        }
-        return configuration.logicalRange.lowerBound + logicalNormalized * configuration.logicalRange.span
-    }
-    
-    private func waitForAttachment(timeout: TimeInterval) throws {
-        let start = Date()
-        while !attached {
-            if Date().timeIntervalSince(start) > timeout {
-                throw StateMachine.FigurineError.attachmentTimeout(channel: configuration.channel)
-            }
-            Thread.sleep(forTimeInterval: 0.01)
-        }
-    }
-    
-    private func setupHandlers() {
-        _ = servo.error.addHandler { [weak self] _, data in
-            guard let self else { return }
-            self.logTelemetry("servo.error", values: ["code": data.code.rawValue, "description": data.description])
-        }
-        _ = servo.attach.addHandler { [weak self] sender in
-            guard let self else { return }
-            self.attached = true
-            let channel = (try? sender.getChannel()) ?? -1
-            self.logTelemetry("servo.attach", values: ["channel": channel])
-        }
-        _ = servo.detach.addHandler { [weak self] sender in
-            guard let self else { return }
-            self.attached = false
-            let channel = (try? sender.getChannel()) ?? -1
-            self.logTelemetry("servo.detach", values: ["channel": channel])
-        }
-        _ = servo.velocityChange.addHandler { [weak self] _, velocity in
-            self?.logTelemetry("servo.velocity", values: ["value": velocity])
-        }
-        _ = servo.positionChange.addHandler { [weak self] _, position in
-            guard let self else { return }
-            self.positionObserver?(self.logicalValue(forServoPosition: position))
-            self.logTelemetry("servo.position", values: ["value": position])
-        }
-        _ = servo.targetPositionReached.addHandler { [weak self] _, position in
-            self?.logTelemetry("servo.targetReached", values: ["value": position])
-        }
-    }
-
-    private func configure(_ step: String, _ action: () throws -> Void) throws {
-        do { try action() }
-        catch let err as PhidgetError {
-            outputError(errorDescription: "[\(configuration.name)] \(step): \(err.description)", errorCode: err.errorCode.rawValue)
-            throw err
-        }
-        catch {
-            logTelemetry("servo.error", values: ["step": step, "description": "\(error)"])
-            throw error
-        }
-    }
-    
-    private func perform(_ step: String, _ action: () throws -> Void) {
-        do { try action() }
-        catch let err as PhidgetError {
-            outputError(errorDescription: "[\(configuration.name)] \(step): \(err.description)", errorCode: err.errorCode.rawValue)
-            logTelemetry("servo.error", values: ["step": step, "code": err.errorCode.rawValue, "description": err.description])
-        }
-        catch {
-            logTelemetry("servo.error", values: ["step": step, "description": "\(error)"])
-        }
-    }
-    
-    private func clamp(_ value: Double, min: Double?, max: Double?) -> Double {
-        var lower = min
-        var upper = max
-        if let l = lower, let u = upper, l > u { lower = u; upper = l }
-        var clamped = value
-        if let lower { clamped = Swift.max(clamped, lower) }
-        if let upper { clamped = Swift.min(clamped, upper) }
-        return clamped
-    }
-    
-    private func logTelemetry(_ event: String, values: [String: CustomStringConvertible] = [:]) {
-        var merged = values
-        merged["servo"] = configuration.name
-        telemetryLogger?(event, merged)
+    private func teardownDriversLocked() {
+        leftHandDriver.shutdown()
+        rightHandDriver.shutdown()
+        headDriver.shutdown()
+        bodyDriver.shutdown()
     }
 }
 
