@@ -6,7 +6,10 @@ import Ollama
 /// Set to true to keep the legacy 90° portrait camera rotation; landscape is default.
 private let portraitCameraMode = false
 
-let santa = StateMachine(
+/// The runtime coordinator for Santa figurine control.
+/// This replaces the global `santa` StateMachine with a higher-level abstraction.
+@MainActor
+let coordinator = RuntimeCoordinator(
     settings: StateMachine.Settings.default.withCameraHorizontalFOV(
         portraitCameraMode ? 60 : 90
     )
@@ -14,17 +17,48 @@ let santa = StateMachine(
 
 @available(macOS 11.0, *)
 struct MinimalApp: App {
-    @StateObject private var camera = CameraManager()
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(camera)
-                .onAppear {
-                    camera.portraitModeEnabled = portraitCameraMode
-                    camera.start()
+            Group {
+                if coordinator.detectionSource.supportsPreview,
+                   let visionSource = coordinator.detectionSource as? VisionDetectionSource {
+                    // Physical mode with camera preview
+                    ContentView()
+                        .environmentObject(visionSource)
+                } else {
+                    // Virtual mode - show a placeholder view or minimal UI
+                    VirtualModeView()
                 }
-                .onDisappear { camera.stop() }
+            }
+            .task {
+                if let source = coordinator.detectionSource as? VisionDetectionSource {
+                    source.portraitModeEnabled = portraitCameraMode
+                }
+                do {
+                    try await coordinator.start()
+                    print("🎅 RoboSanta started in \(coordinator.currentRuntime) mode")
+                } catch {
+                    print("Failed to start coordinator: \(error)")
+                }
+            }
         }
+    }
+}
+
+/// Placeholder view for virtual mode (no camera preview needed)
+struct VirtualModeView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("🎅 Virtual Santa Mode")
+                .font(.title)
+            Text("Running without hardware")
+                .foregroundColor(.secondary)
+            Text("Set ROBOSANTA_RUNTIME=physical or use --physical flag for camera mode")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .frame(minWidth: 400, minHeight: 300)
     }
 }
 
@@ -123,14 +157,10 @@ Svara endast med JSON som matchar schemat.
     }
     
     static func main() async {
-        let loopTask = Task.detached(priority: .background) {
-            try await santa.start()
-            // await backgroundLoop()
-        }
+        // Coordinator handles startup via SwiftUI lifecycle
         MinimalApp.main()
         print("Preparing shutdown")
-        loopTask.cancel()
-        _ = await loopTask.result
+        await coordinator.stop()
         print("Done")
     }
 }
