@@ -10,6 +10,7 @@ private let portraitCameraMode = false
 /// This replaces the global `santa` StateMachine with a higher-level abstraction.
 @MainActor
 let coordinator = RuntimeCoordinator(
+    runtime: .virtual,
     settings: StateMachine.Settings.default.withCameraHorizontalFOV(
         portraitCameraMode ? 60 : 90
     )
