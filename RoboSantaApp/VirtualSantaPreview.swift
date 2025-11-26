@@ -337,17 +337,38 @@ struct VirtualSantaPreview: View {
                     Slider(value: $zoomScale, in: 0.5...1.5) {
                         Text("Zoom").padding(.trailing, 8)
                     }
-                    Button("Hide") { }
-                        .buttonStyle(.bordered)
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { _ in isPersonHidden = true }
-                                .onEnded { _ in isPersonHidden = false }
-                        )
+                    HideButton(isHidden: $isPersonHidden)
                 }
             }
         }
         .padding()
+    }
+}
+
+/// A button that hides the person while pressed without blocking animations.
+struct HideButton: View {
+    @Binding var isHidden: Bool
+    @GestureState private var isPressed = false
+    
+    var body: some View {
+        Text("Hide")
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(isPressed ? Color.gray.opacity(0.3) : Color.gray.opacity(0.15))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+            )
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .updating($isPressed) { _, state, _ in
+                        state = true
+                    }
+            )
+            .onChange(of: isPressed) { _, newValue in
+                isHidden = newValue
+            }
     }
 }
 
