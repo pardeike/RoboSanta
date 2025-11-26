@@ -1014,14 +1014,35 @@ final class StateMachine {
     }
     
     private func resetLeftHandAutopilot(clearTimeCooldown: Bool = false) {
+        // If hand is not already lowered/lowering, command it to lower first.
+        // This ensures the servo actually moves to the down position instead of
+        // just resetting the state and leaving the hand stuck mid-air.
+        if behavior.leftHandAutoState != .lowered && behavior.leftHandAutoState != .lowering {
+            behavior.leftHandAutoState = .lowering
+            let minAngle = configuration.leftHand.logicalRange.lowerBound
+            setLeftHandTarget(angle: minAngle, speed: settings.leftHandLowerSpeed)
+            logState("leftHand.loweringDueToReset")
+            // Don't clear leftHandAutoState or leftHandTargetAngle - let the position observer
+            // handle the transition to .lowered state once the servo reaches the down position.
+            clearLeftHandAutopilotState(clearTimeCooldown: clearTimeCooldown)
+            behavior.leftGesture = .down
+            return
+        }
+        
+        // Hand is already lowered or lowering, just reset state
         behavior.leftHandAutoState = .lowered
         behavior.leftHandTargetAngle = nil
+        clearLeftHandAutopilotState(clearTimeCooldown: clearTimeCooldown)
+        setLeftGesture(.down)
+    }
+    
+    /// Clears autopilot state variables without affecting leftHandAutoState or leftHandTargetAngle.
+    private func clearLeftHandAutopilotState(clearTimeCooldown: Bool) {
         behavior.leftHandRaisedTimestamp = nil
         behavior.leftHandPauseEndTime = nil
         behavior.leftHandCooldownActive = false
         behavior.leftHandAutopilotArmed = false
         if clearTimeCooldown { behavior.leftHandCooldownUntil = nil }
-        setLeftGesture(.down)
     }
     
     private var leftHandTimeoutEnabled: Bool { settings.leftHandMaxRaisedDuration > 0 }
