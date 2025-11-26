@@ -63,18 +63,17 @@ struct ValuePlotter: View {
     private let bodyRange: ClosedRange<Double> = -105...105
     private let headRange: ClosedRange<Double> = -30...30
     private let handRange: ClosedRange<Double> = 0...1
+    /// Padding around the graph content
+    private let graphPadding: CGFloat = 4
     
     var body: some View {
         GeometryReader { geometry in
             Canvas { context, size in
-                let width = size.width
-                let height = size.height
                 let points = buffer.dataPoints
                 
                 guard points.count > 1 else { return }
                 
-                let pointSpacing = width / CGFloat(buffer.maxPoints - 1)
-                let startIndex = max(0, points.count - buffer.maxPoints)
+                let pointSpacing = size.width / CGFloat(buffer.maxPoints - 1)
                 let visiblePoints = Array(points.suffix(buffer.maxPoints))
                 
                 // Draw each servo line
@@ -110,14 +109,13 @@ struct ValuePlotter: View {
         guard points.count > 1 else { return }
         
         var path = Path()
-        let padding: CGFloat = 4
-        let drawHeight = size.height - padding * 2
+        let drawHeight = size.height - graphPadding * 2
         
         for (index, point) in points.enumerated() {
             let x = CGFloat(index) * pointSpacing
             let normalizedValue = valueExtractor(point)
             // Invert Y because screen coordinates have origin at top
-            let y = padding + drawHeight * (1 - normalizedValue)
+            let y = graphPadding + drawHeight * (1 - normalizedValue)
             
             if index == 0 {
                 path.move(to: CGPoint(x: x, y: y))
