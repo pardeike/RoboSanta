@@ -884,3 +884,101 @@ RoboSantaApp/
 ### Deleted Code
 - `StateMachine.swift` private `ServoChannel` class (moved to `PhidgetServoDriver.swift`)
 - `CameraManager.swift` `driveFigurine()` method (moved to `DetectionRouter.swift`)
+
+## Simulation Timing Model
+
+The virtual simulation is designed to accurately mirror physical hardware behavior. Understanding the timing model is crucial for debugging and extending the simulation.
+
+### Timing Components
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Timing Flow Diagram                              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  PersonGenerator (30 Hz)                                             │
+│       │                                                              │
+│       ▼                                                              │
+│  VirtualDetectionSource ───► DetectionRouter ───► StateMachine       │
+│                                                    │                 │
+│                                                    │ (50 Hz loop)    │
+│                                                    ▼                 │
+│                                              updatePose()            │
+│                                                    │                 │
+│                                                    ▼                 │
+│                                              applyPose()             │
+│                                                    │                 │
+│                                                    ▼                 │
+│                                            VirtualServoDriver        │
+│                                               (50 Hz)                │
+│                                                    │                 │
+│                                                    ▼                 │
+│                                            positionObserver()        │
+│                                                    │                 │
+│                                                    ▼                 │
+│  RuntimeCoordinator (20 Hz) ◄──── poseUpdates ────┘                  │
+│       │                                                              │
+│       ▼                                                              │
+│  VirtualDetectionSource.cameraHeadingDegrees                         │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Timing Values
+
+| Component | Rate | Purpose |
+|-----------|------|---------|
+| PersonGenerator | 30 Hz | Simulates person movement in world space |
+| StateMachine loop | 50 Hz | Processes events, updates targets, applies pose |
+| VirtualServoDriver | 50 Hz | Simulates servo movement toward targets |
+| Pose publisher | 20 Hz | Updates UI and camera heading feedback |
+
+### Velocity Model
+
+The `VirtualServoDriver` interprets velocity values as **normalized velocity** (fraction of logical range per second):
+
+```
+Physical velocity value (e.g., 200) 
+       │
+       ▼ ÷ 200 (scaling factor)
+       │
+Normalized velocity (1.0 = full range per second)
+       │
+       ▼ × logical range span
+       │
+Logical velocity (units per second)
+       │
+       ▼ × simulation interval (0.02s)
+       │
+Max delta per tick (units)
+```
+
+**Example calculations:**
+
+| Servo | Logical Range | Velocity | Normalized | Logical/sec | Per Tick (0.02s) |
+|-------|---------------|----------|------------|-------------|------------------|
+| LeftHand | 0...1 (span=1) | 200 | 1.0 | 1.0 units | 0.02 units |
+| Head | -30...30 (span=60) | 200 | 1.0 | 60 deg | 1.2 deg |
+| Body | -105...105 (span=210) | 200 | 1.0 | 210 deg | 4.2 deg |
+
+### Camera Heading Feedback Loop
+
+For accurate simulation, the virtual detection source must use the **measured** camera heading (actual servo positions) rather than the **target** heading (commanded positions). This ensures the feedback loop correctly accounts for servo lag:
+
+```swift
+// In RuntimeCoordinator.setupCameraHeadingUpdates()
+virtualSource.cameraHeadingDegrees = self.rig.stateMachine.cameraHeading()
+// NOT: pose.cameraHeading (which uses target positions)
+```
+
+This is important because:
+1. `pose.cameraHeading` = `bodyAngle + headAngle` (target positions)
+2. `stateMachine.cameraHeading()` = measured positions when available
+3. Virtual servos take time to reach targets, so there's lag between target and actual
+
+### Debugging Tips
+
+1. **Servo moving too fast or instant**: Check velocity scaling factor and logical range span multiplication
+2. **Camera not tracking correctly**: Verify `cameraHeadingDegrees` is updated with measured values
+3. **Jerky motion**: Check timer scheduling and run loop modes
+4. **Person detection flicker**: Adjust `lostThreshold` in `DetectionRouter` (default 0.6s)
