@@ -340,6 +340,7 @@ struct VirtualSantaPreview: View {
                         Text("Zoom").padding(.trailing, 8)
                     }
                     HideButton(isHidden: $isPersonHidden)
+                        .frame(width: 50, height: 26)
                 }
             }
         }
