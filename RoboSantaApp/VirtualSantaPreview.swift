@@ -46,8 +46,11 @@ final class SantaPreviewRenderer {
     func apply(pose: StateMachine.FigurinePose) {
         bodyPivot.eulerAngles.y = CGFloat(deg2rad(pose.bodyAngle))
         headPivot.eulerAngles.y = CGFloat(deg2rad(pose.headAngle))
-        leftArmPivot.eulerAngles.x = CGFloat(armAngle(for: pose.leftHand))
-        rightArmPivot.eulerAngles.x = CGFloat(armAngle(for: pose.rightHand))
+        // The 3D model's leftArmPivot is at negative X, which appears on the viewer's LEFT.
+        // But the robot's "left hand" should appear on the viewer's RIGHT (mirrored view).
+        // So we swap: leftHand controls rightArmPivot (viewer's right), rightHand controls leftArmPivot (viewer's left).
+        leftArmPivot.eulerAngles.x = CGFloat(armAngle(for: pose.rightHand))
+        rightArmPivot.eulerAngles.x = CGFloat(armAngle(for: pose.leftHand))
     }
     
     func applyPerson(relativeOffset: Double?) {
