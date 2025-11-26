@@ -55,6 +55,7 @@ struct VirtualModeView: View {
     @State private var pose = StateMachine.FigurinePose()
     @State private var zoomScale: Double = 0.5
     @State private var azimuthDegrees: Double = -80
+    @State private var isPersonHidden: Bool = false
     @StateObject private var dataBuffer = ServoDataBuffer(maxPoints: 200)
 
     private var personStatesPublisher: AnyPublisher<PersonState, Never> {
@@ -86,12 +87,19 @@ struct VirtualModeView: View {
         )
     }
     
+    private func updatePersonHidden() {
+        renderer.setPersonDimmed(isPersonHidden)
+        if let virtualSource = coordinator.detectionSource as? VirtualDetectionSource {
+            virtualSource.forcePersonHidden = isPersonHidden
+        }
+    }
+    
     var body: some View {
         GeometryReader { geometry in
             VStack(spacing: 12) {
                 // Top half: 3D Santa Preview
                 VStack(spacing: 4) {
-                    VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, renderer: renderer)
+                    VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, isPersonHidden: $isPersonHidden, renderer: renderer)
                 }
                 .frame(height: geometry.size.height * 0.48)
                 
@@ -132,6 +140,7 @@ struct VirtualModeView: View {
         }
         .onChange(of: zoomScale) { _, _ in updateCamera() }
         .onChange(of: azimuthDegrees) { _, _ in updateCamera() }
+        .onChange(of: isPersonHidden) { _, _ in updatePersonHidden() }
         .onReceive(coordinator.poseUpdates.receive(on: RunLoop.main)) { newPose in
             pose = newPose
             renderer.apply(pose: newPose)

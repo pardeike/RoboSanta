@@ -43,6 +43,10 @@ final class VirtualDetectionSource: PersonDetectionSource {
     /// This should be updated by the rig to reflect the actual camera direction.
     var cameraHeadingDegrees: Double = 0
     
+    /// When true, forces the person to be hidden regardless of generator state.
+    /// This allows manual control over person visibility for testing.
+    var forcePersonHidden: Bool = false
+    
     var detectionFrames: AnyPublisher<DetectionFrame, Never> {
         detectionSubject.eraseToAnyPublisher()
     }
@@ -92,8 +96,9 @@ final class VirtualDetectionSource: PersonDetectionSource {
         personStateSubject.send(personState)
         
         // Calculate face position in camera frame
+        // If forcePersonHidden is true, we don't detect any faces (but person still moves in 3D view)
         let faces: [DetectedFace]
-        if personState.isPresent {
+        if personState.isPresent && !forcePersonHidden {
             // Calculate the angle from figurine to person in world space
             let angleToPersonDeg = atan2(personState.horizontalPosition, personState.distance) * 180.0 / .pi
             
