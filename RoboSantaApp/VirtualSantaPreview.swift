@@ -347,26 +347,110 @@ struct VirtualSantaPreview: View {
     }
 }
 
-/// A button that hides the person while pressed without blocking animations.
-/// Uses a background timer approach to avoid gesture system blocking the run loop.
-struct HideButton: View {
+/// A native AppKit button that tracks mouse press state without blocking SwiftUI animations.
+/// Uses NSTrackingArea and mouse event handlers instead of SwiftUI gestures.
+struct HideButton: NSViewRepresentable {
     @Binding var isHidden: Bool
-    @State private var isPressed = false
     
-    var body: some View {
-        Text("Hide")
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(isPressed ? Color.gray.opacity(0.3) : Color.gray.opacity(0.15))
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-            )
-            .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
-                isPressed = pressing
-                isHidden = pressing
-            }, perform: { })
+    func makeNSView(context: Context) -> HideButtonView {
+        let view = HideButtonView()
+        view.onPressChanged = { pressed in
+            DispatchQueue.main.async {
+                self.isHidden = pressed
+            }
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: HideButtonView, context: Context) {
+        // No updates needed
+    }
+}
+
+/// Native AppKit view for the Hide button with mouse tracking.
+class HideButtonView: NSView {
+    var onPressChanged: ((Bool) -> Void)?
+    private var isPressed = false {
+        didSet {
+            needsDisplay = true
+            onPressChanged?(isPressed)
+        }
+    }
+    private var trackingArea: NSTrackingArea?
+    
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupView()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupView()
+    }
+    
+    private func setupView() {
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        updateTrackingArea()
+    }
+    
+    override var intrinsicContentSize: NSSize {
+        return NSSize(width: 50, height: 26)
+    }
+    
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        updateTrackingArea()
+    }
+    
+    private func updateTrackingArea() {
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        trackingArea = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(trackingArea!)
+    }
+    
+    override func mouseDown(with event: NSEvent) {
+        isPressed = true
+    }
+    
+    override func mouseUp(with event: NSEvent) {
+        isPressed = false
+    }
+    
+    override func draw(_ dirtyRect: NSRect) {
+        let backgroundColor = isPressed 
+            ? NSColor.gray.withAlphaComponent(0.3) 
+            : NSColor.gray.withAlphaComponent(0.15)
+        backgroundColor.setFill()
+        
+        let path = NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6)
+        path.fill()
+        
+        NSColor.gray.withAlphaComponent(0.3).setStroke()
+        path.lineWidth = 1
+        path.stroke()
+        
+        // Draw text
+        let text = "Hide"
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 13),
+            .foregroundColor: NSColor.labelColor
+        ]
+        let textSize = text.size(withAttributes: attributes)
+        let textRect = NSRect(
+            x: (bounds.width - textSize.width) / 2,
+            y: (bounds.height - textSize.height) / 2,
+            width: textSize.width,
+            height: textSize.height
+        )
+        text.draw(in: textRect, withAttributes: attributes)
     }
 }
 
