@@ -57,20 +57,11 @@ final class RuntimeCoordinator: ObservableObject {
     ///                      If nil, uses the default OscillatingPersonGenerator.
     init(runtime: SantaRuntime, settings: StateMachine.Settings, personGenerator: (any PersonGenerator)? = nil) {
         self.currentRuntime = runtime
-        
-        switch runtime {
-        case .physical:
-            self.rig = PhysicalRig(settings: settings)
-            self.detectionSource = VisionDetectionSource()
-        case .virtual:
-            self.rig = VirtualRig(settings: settings)
-            let generator = personGenerator ?? OscillatingPersonGenerator()
-            let detectionConfig = VirtualDetectionConfig(
-                cameraHorizontalFOV: settings.figurineConfiguration.trackingBehavior.cameraHorizontalFOV
-            )
-            self.detectionSource = VirtualDetectionSource(generator: generator, config: detectionConfig)
-        }
-        
+        (self.rig, self.detectionSource) = Self.createComponents(
+            runtime: runtime,
+            settings: settings,
+            personGenerator: personGenerator
+        )
         self.router = DetectionRouter(stateMachine: rig.stateMachine)
         router?.connect(to: detectionSource)
         setupCameraHeadingUpdates()
@@ -113,18 +104,11 @@ final class RuntimeCoordinator: ObservableObject {
         cameraHeadingCancellable?.cancel()
         cameraHeadingCancellable = nil
         
-        switch runtime {
-        case .physical:
-            self.rig = PhysicalRig(settings: settings)
-            self.detectionSource = VisionDetectionSource()
-        case .virtual:
-            self.rig = VirtualRig(settings: settings)
-            let generator = personGenerator ?? OscillatingPersonGenerator()
-            let detectionConfig = VirtualDetectionConfig(
-                cameraHorizontalFOV: settings.figurineConfiguration.trackingBehavior.cameraHorizontalFOV
-            )
-            self.detectionSource = VirtualDetectionSource(generator: generator, config: detectionConfig)
-        }
+        (rig, detectionSource) = Self.createComponents(
+            runtime: runtime,
+            settings: settings,
+            personGenerator: personGenerator
+        )
         
         self.router = DetectionRouter(stateMachine: rig.stateMachine)
         router?.connect(to: detectionSource)
@@ -137,6 +121,24 @@ final class RuntimeCoordinator: ObservableObject {
     }
     
     // MARK: - Private
+    
+    /// Creates the rig and detection source components for a given runtime mode.
+    private static func createComponents(
+        runtime: SantaRuntime,
+        settings: StateMachine.Settings,
+        personGenerator: (any PersonGenerator)?
+    ) -> (SantaRig, PersonDetectionSource) {
+        switch runtime {
+        case .physical:
+            return (PhysicalRig(settings: settings), VisionDetectionSource())
+        case .virtual:
+            let generator = personGenerator ?? OscillatingPersonGenerator()
+            let detectionConfig = VirtualDetectionConfig(
+                cameraHorizontalFOV: settings.figurineConfiguration.trackingBehavior.cameraHorizontalFOV
+            )
+            return (VirtualRig(settings: settings), VirtualDetectionSource(generator: generator, config: detectionConfig))
+        }
+    }
     
     /// Connect pose updates to the virtual detection source so it knows the camera heading.
     /// This allows the virtual detection source to calculate where a person would appear

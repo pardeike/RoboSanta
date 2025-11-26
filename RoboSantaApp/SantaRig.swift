@@ -30,8 +30,9 @@ protocol SantaRig {
     var stateMachine: StateMachine { get }
 }
 
-/// Physical rig using Phidget hardware.
-final class PhysicalRig: SantaRig {
+/// Base implementation of SantaRig that works with any ServoDriverFactory.
+/// Use PhysicalRig or VirtualRig convenience subclasses for specific modes.
+final class BaseSantaRig: SantaRig {
     let stateMachine: StateMachine
     private let poseSubject = PassthroughSubject<StateMachine.FigurinePose, Never>()
     private var poseTimer: Timer?
@@ -40,10 +41,10 @@ final class PhysicalRig: SantaRig {
         poseSubject.eraseToAnyPublisher()
     }
     
-    init(settings: StateMachine.Settings = .default) {
+    init(settings: StateMachine.Settings = .default, driverFactory: ServoDriverFactory) {
         self.stateMachine = StateMachine(
             settings: settings,
-            driverFactory: PhidgetServoDriverFactory()
+            driverFactory: driverFactory
         )
     }
     
@@ -74,46 +75,36 @@ final class PhysicalRig: SantaRig {
     }
 }
 
-/// Virtual rig using simulated servos.
-final class VirtualRig: SantaRig {
-    let stateMachine: StateMachine
-    private let poseSubject = PassthroughSubject<StateMachine.FigurinePose, Never>()
-    private var poseTimer: Timer?
+/// Physical rig using Phidget hardware.
+final class PhysicalRig: SantaRig {
+    private let base: BaseSantaRig
     
-    var poseUpdates: AnyPublisher<StateMachine.FigurinePose, Never> {
-        poseSubject.eraseToAnyPublisher()
-    }
+    var stateMachine: StateMachine { base.stateMachine }
+    var poseUpdates: AnyPublisher<StateMachine.FigurinePose, Never> { base.poseUpdates }
     
     init(settings: StateMachine.Settings = .default) {
-        self.stateMachine = StateMachine(
-            settings: settings,
-            driverFactory: VirtualServoDriverFactory()
-        )
+        self.base = BaseSantaRig(settings: settings, driverFactory: PhidgetServoDriverFactory())
     }
     
-    func start() async throws {
-        try await stateMachine.start()
-        startPosePublisher()
+    func start() async throws { try await base.start() }
+    func stop() async { await base.stop() }
+    func send(_ event: StateMachine.Event) { base.send(event) }
+    func poseSnapshot() -> StateMachine.FigurinePose { base.poseSnapshot() }
+}
+
+/// Virtual rig using simulated servos.
+final class VirtualRig: SantaRig {
+    private let base: BaseSantaRig
+    
+    var stateMachine: StateMachine { base.stateMachine }
+    var poseUpdates: AnyPublisher<StateMachine.FigurinePose, Never> { base.poseUpdates }
+    
+    init(settings: StateMachine.Settings = .default) {
+        self.base = BaseSantaRig(settings: settings, driverFactory: VirtualServoDriverFactory())
     }
     
-    func stop() async {
-        poseTimer?.invalidate()
-        poseTimer = nil
-        await stateMachine.stop()
-    }
-    
-    func send(_ event: StateMachine.Event) {
-        stateMachine.send(event)
-    }
-    
-    func poseSnapshot() -> StateMachine.FigurinePose {
-        stateMachine.currentPose()
-    }
-    
-    private func startPosePublisher() {
-        poseTimer = Timer.scheduledTimer(withTimeInterval: poseUpdateInterval, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.poseSubject.send(self.stateMachine.currentPose())
-        }
-    }
+    func start() async throws { try await base.start() }
+    func stop() async { await base.stop() }
+    func send(_ event: StateMachine.Event) { base.send(event) }
+    func poseSnapshot() -> StateMachine.FigurinePose { base.poseSnapshot() }
 }
