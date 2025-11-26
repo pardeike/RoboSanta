@@ -944,24 +944,55 @@ Physical velocity value (e.g., 200)
        │
 Normalized velocity (1.0 = full range per second)
        │
+       ▼ capped to 1.5 max (simulates hardware limits)
+       │
        ▼ × logical range span
        │
-Logical velocity (units per second)
+Target logical velocity (units per second)
+       │
+       ▼ speed ramping (acceleration/deceleration)
+       │
+Current velocity (smoothly approaches target)
        │
        ▼ × simulation interval (0.02s)
        │
-Max delta per tick (units)
+Position delta per tick (units)
 ```
 
 **Example calculations (based on default servo configurations):**
 
-> **Note:** These are example ranges from the default servo configurations in `StateMachineSettings.swift`. Actual values may vary based on hardware setup and tuning.
+> **Note:** These are example ranges from the default servo configurations in `StateMachineSettings.swift`. Actual values may vary based on hardware setup and tuning. The normalized velocity is capped at 1.5 range/sec to simulate physical servo torque limits.
 
-| Servo | Logical Range | Velocity | Normalized | Logical/sec | Per Tick (0.02s) |
-|-------|---------------|----------|------------|-------------|------------------|
-| LeftHand | 0...1 (span=1) | 200 | 1.0 | 1.0 units | 0.02 units |
-| Head | -30...30 (span=60) | 200 | 1.0 | 60 deg | 1.2 deg |
-| Body | -105...105 (span=210) | 200 | 1.0 | 210 deg | 4.2 deg |
+| Servo | Logical Range | Velocity | Normalized | Capped | Logical/sec | Per Tick (0.02s) |
+|-------|---------------|----------|------------|--------|-------------|------------------|
+| LeftHand | 0...1 (span=1) | 200 | 1.0 | 1.0 | 1.0 units | 0.02 units |
+| LeftHand (wave) | 0...1 (span=1) | 500 | 2.5 | 1.5 | 1.5 units | 0.03 units |
+| Head | -30...30 (span=60) | 200 | 1.0 | 1.0 | 60 deg | 1.2 deg |
+| Body | -105...105 (span=210) | 200 | 1.0 | 1.0 | 210 deg | 4.2 deg |
+
+### Speed Ramping (Acceleration/Deceleration)
+
+Real RC servos with speed ramping enabled (`setSpeedRampingState(true)`) don't instantly reach their target velocity. They accelerate from rest and decelerate when approaching the target position. The `VirtualServoDriver` simulates this behavior:
+
+**Acceleration Phase:**
+- When starting a movement, velocity ramps up from 0 toward the target velocity
+- Acceleration rate: 8.0 range/sec² (configurable via `accelerationRate`)
+- This prevents jerky starts and looks more natural
+
+**Cruising Phase:**
+- Once at target velocity, servo moves at constant speed
+- This is the majority of longer movements
+
+**Deceleration Phase:**
+- When within 25% of the logical range from target, velocity starts decreasing
+- Uses a sqrt curve for smooth, natural-feeling slowdown
+- Minimum velocity of 0.15 range/sec prevents stalling near target
+
+**Direction Changes:**
+- When target changes direction, velocity resets to 0
+- This simulates real servo motor behavior where the motor must stop before reversing
+
+This ramping behavior is especially noticeable during wave motions, where the back-and-forth movement has visible acceleration and deceleration at each reversal point.
 
 ### Camera Heading Feedback Loop
 
