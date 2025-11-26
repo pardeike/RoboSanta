@@ -8,13 +8,13 @@ import Combine
 enum ServoColor {
     static let body = Color.red
     static let head = Color.gray
-    static let leftArm = Color.orange
-    static let rightArm = Color.pink
+    static let leftArm = Color.blue
+    static let rightArm = Color.yellow
     
     static let bodyBackground = Color.red.opacity(0.3)
     static let headBackground = Color.gray.opacity(0.3)
-    static let leftArmBackground = Color.orange.opacity(0.3)
-    static let rightArmBackground = Color.pink.opacity(0.3)
+    static let leftArmBackground = Color.blue.opacity(0.3)
+    static let rightArmBackground = Color.yellow.opacity(0.3)
 }
 
 /// A single data point with all four servo values
