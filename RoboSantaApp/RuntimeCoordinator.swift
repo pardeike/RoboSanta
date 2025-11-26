@@ -148,10 +148,13 @@ final class RuntimeCoordinator: ObservableObject {
         
         cameraHeadingCancellable = rig.poseUpdates
             .receive(on: DispatchQueue.main)
-            .sink { pose in
-                // Update the camera heading in the virtual detection source
-                // Camera heading = body angle + head angle
-                virtualSource.cameraHeadingDegrees = pose.cameraHeading
+            .sink { [weak self] _ in
+                guard let self else { return }
+                // Use the measured camera heading (actual servo positions) for accurate simulation.
+                // This is more accurate than pose.cameraHeading which uses target positions.
+                // The StateMachine.cameraHeading() returns measured positions when available,
+                // falling back to target positions if no measurements exist yet.
+                virtualSource.cameraHeadingDegrees = self.rig.stateMachine.cameraHeading()
             }
     }
 }
