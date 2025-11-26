@@ -188,6 +188,7 @@ final class StateMachine {
         var leftHandCooldownUntil: Date?
         var leftHandAutopilotArmed = false
         var leftHandMeasuredAngle: Double?
+        var leftHandLastLoggedAngle: Double?
         var rightHandMeasuredAngle: Double?
 
         mutating func focus(on heading: Double, now: Date) {
@@ -1060,6 +1061,7 @@ final class StateMachine {
 
     private func setLeftHandTarget(angle: Double, speed: Double) {
         behavior.leftHandTargetAngle = angle
+        behavior.leftHandLastLoggedAngle = nil  // Reset so first position update gets logged
         leftHandDriver.setVelocity(speed)
         leftHandDriver.move(toLogical: angle)
         logState("leftHand.target", values: ["angle": angle, "speed": speed])
@@ -1071,6 +1073,20 @@ final class StateMachine {
 
     private func handleLeftHandPositionUpdate(angle: Double, now: Date) {
         guard let target = behavior.leftHandTargetAngle else { return }
+        
+        // Log intermediate positions during movement (every 0.1 change)
+        let logThreshold = 0.1
+        if behavior.leftHandAutoState != .lowered && behavior.leftHandAutoState != .pausingAtTop {
+            if let lastLogged = behavior.leftHandLastLoggedAngle {
+                if abs(angle - lastLogged) >= logThreshold {
+                    logState("leftHand.position", values: ["angle": String(format: "%.2f", angle)])
+                    behavior.leftHandLastLoggedAngle = angle
+                }
+            } else {
+                logState("leftHand.position", values: ["angle": String(format: "%.2f", angle)])
+                behavior.leftHandLastLoggedAngle = angle
+            }
+        }
         
         if hasReachedTarget(measured: angle, target: target) {
             switch behavior.leftHandAutoState {
