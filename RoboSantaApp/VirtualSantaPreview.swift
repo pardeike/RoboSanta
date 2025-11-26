@@ -219,18 +219,21 @@ final class SantaPreviewRenderer {
         headNode.addChildNode(rightEyeNode)
         
         // Arms mounted to the body sides with their own pivots.
+        // Positions are mirrored so robot's left arm appears on viewer's right (as when facing someone).
         let shoulderHeight = bodyHeight * 0.82
         let shoulderOffset = bodyRadius + armRadius * 1.2
         let armGeometry = SCNCylinder(radius: armRadius, height: armLength)
         armGeometry.firstMaterial = material(color: NSColor(calibratedRed: 0.82, green: 0.09, blue: 0.12, alpha: 1))
         
-        leftArmPivot.position = SCNVector3(-shoulderOffset, shoulderHeight, 0)
+        // Robot's left arm (waving) at positive X = viewer's right
+        leftArmPivot.position = SCNVector3(shoulderOffset, shoulderHeight, 0)
         bodyPivot.addChildNode(leftArmPivot)
         let leftArm = SCNNode(geometry: armGeometry)
         leftArm.position = SCNVector3(0, -armLength / 2, 0)
         leftArmPivot.addChildNode(leftArm)
         
-        rightArmPivot.position = SCNVector3(shoulderOffset, shoulderHeight, 0)
+        // Robot's right arm at negative X = viewer's left
+        rightArmPivot.position = SCNVector3(-shoulderOffset, shoulderHeight, 0)
         bodyPivot.addChildNode(rightArmPivot)
         let rightArm = SCNNode(geometry: armGeometry)
         rightArm.position = SCNVector3(0, -armLength / 2, 0)

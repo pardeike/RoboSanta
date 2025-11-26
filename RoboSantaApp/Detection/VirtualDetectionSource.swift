@@ -25,11 +25,6 @@ struct VirtualDetectionConfig {
     static let `default` = VirtualDetectionConfig()
 }
 
-/// Conversion factor from normalized amplitude (0..1) to meters.
-/// The legacy VirtualPersonConfig used normalized values where 1.0 = full width.
-/// The actual walk area is approximately 3 meters wide (based on VirtualSantaPreview).
-private let normalizedToMetersConversionFactor: Double = 3.0
-
 /// Virtual detection source that simulates a person walking past.
 /// Uses a PersonGenerator to determine person position and calculates the relative
 /// offset in the camera frame based on the current camera heading angle.
@@ -60,23 +55,6 @@ final class VirtualDetectionSource: PersonDetectionSource {
     ) {
         self.personGenerator = generator
         self.config = config
-    }
-    
-    /// Convenience initializer using the legacy VirtualPersonConfig.
-    /// Creates an OscillatingPersonGenerator with equivalent settings.
-    convenience init(legacyConfig: VirtualPersonConfig) {
-        let oscillatingConfig = OscillatingPersonConfig(
-            amplitude: legacyConfig.amplitude * normalizedToMetersConversionFactor,
-            period: legacyConfig.period,
-            distance: legacyConfig.distance,
-            presenceProbability: legacyConfig.presenceProbability,
-            seed: legacyConfig.seed
-        )
-        let generator = OscillatingPersonGenerator(config: oscillatingConfig)
-        self.init(generator: generator, config: VirtualDetectionConfig(
-            frameSize: CGSize(width: 1920, height: 1080),
-            frameRate: 30.0
-        ))
     }
     
     func start() {
@@ -154,23 +132,4 @@ final class VirtualDetectionSource: PersonDetectionSource {
         
         detectionSubject.send(frame)
     }
-}
-
-// MARK: - Legacy Configuration (for backward compatibility)
-
-/// Legacy configuration for virtual person simulation.
-/// Kept for backward compatibility - new code should use PersonGenerator directly.
-struct VirtualPersonConfig {
-    /// Amplitude of lateral oscillation (0...1, where 1 = full camera width)
-    var amplitude: Double = 0.8
-    /// Period of one full oscillation cycle in seconds
-    var period: TimeInterval = 6.0
-    /// Time to dwell at each end of the path
-    var dwellTime: TimeInterval = 1.0
-    /// Distance from camera in meters (affects face size)
-    var distance: Double = 1.5
-    /// Seed for deterministic simulation (nil = random)
-    var seed: UInt64? = nil
-    /// Probability of person being "present" (0...1)
-    var presenceProbability: Double = 0.8
 }
