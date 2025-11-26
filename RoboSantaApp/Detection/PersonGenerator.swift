@@ -49,8 +49,9 @@ struct OscillatingPersonConfig {
     var distance: Double = 2.0
     /// Probability of person being visible per frame (0...1)
     var presenceProbability: Double = 1.0
-    /// Probability of vanishing when reaching an extreme, before reappearing on the other side
-    var extremeVanishProbability: Double = 0.1
+    /// Probability of vanishing when reaching an extreme, before reappearing on the other side.
+    /// Set to 0 to disable automatic hiding (user controls hiding via Hide button).
+    var extremeVanishProbability: Double = 0.0
     /// Base duration range for how long the person is gone when vanishing
     var vanishDurationRange: ClosedRange<TimeInterval> = 0.8...1.6
     /// Additional delay before reappearing after a vanish (added on top of vanishDurationRange)
