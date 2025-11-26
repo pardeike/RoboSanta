@@ -87,7 +87,8 @@ struct VirtualModeView: View {
         )
     }
     
-    private func updatePersonHidden() {
+    private func togglePersonHidden() {
+        isPersonHidden.toggle()
         renderer.setPersonDimmed(isPersonHidden)
         if let virtualSource = coordinator.detectionSource as? VirtualDetectionSource {
             virtualSource.forcePersonHidden = isPersonHidden
@@ -99,7 +100,7 @@ struct VirtualModeView: View {
             VStack(spacing: 12) {
                 // Top half: 3D Santa Preview
                 VStack(spacing: 4) {
-                    VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, isPersonHidden: $isPersonHidden, renderer: renderer)
+                    VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, renderer: renderer)
                 }
                 .frame(height: geometry.size.height * 0.48)
                 
@@ -140,7 +141,6 @@ struct VirtualModeView: View {
         }
         .onChange(of: zoomScale) { _, _ in updateCamera() }
         .onChange(of: azimuthDegrees) { _, _ in updateCamera() }
-        .onChange(of: isPersonHidden) { _, _ in updatePersonHidden() }
         .onReceive(coordinator.poseUpdates.receive(on: RunLoop.main)) { newPose in
             pose = newPose
             renderer.apply(pose: newPose)
@@ -148,6 +148,10 @@ struct VirtualModeView: View {
         }
         .onReceive(personStatesPublisher.receive(on: RunLoop.main)) { state in
             renderer.applyPerson(state: state.isPresent ? state : nil)
+        }
+        .onKeyPress(.space) {
+            togglePersonHidden()
+            return .handled
         }
     }
 }

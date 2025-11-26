@@ -320,7 +320,6 @@ final class SantaPreviewRenderer {
 struct VirtualSantaPreview: View {
     @Binding var zoomScale: Double
     @Binding var azimuthDegrees: Double
-    @Binding var isPersonHidden: Bool
     let renderer: SantaPreviewRenderer
     
     var body: some View {
@@ -339,136 +338,10 @@ struct VirtualSantaPreview: View {
                     Slider(value: $zoomScale, in: 0.5...1.5) {
                         Text("Zoom").padding(.trailing, 8)
                     }
-                    HideButton(isHidden: $isPersonHidden)
-                        .frame(width: 50, height: 26)
                 }
             }
         }
         .padding()
-    }
-}
-
-/// A native AppKit button that tracks mouse press state without blocking SwiftUI animations.
-/// Uses NSTrackingArea and mouse event handlers instead of SwiftUI gestures.
-struct HideButton: NSViewRepresentable {
-    @Binding var isHidden: Bool
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator(isHidden: $isHidden)
-    }
-    
-    func makeNSView(context: Context) -> HideButtonView {
-        let view = HideButtonView()
-        view.onPressChanged = { [weak coordinator = context.coordinator] pressed in
-            coordinator?.updateBinding(pressed)
-        }
-        return view
-    }
-    
-    func updateNSView(_ nsView: HideButtonView, context: Context) {
-        // Update the coordinator's binding reference
-        context.coordinator.isHiddenBinding = $isHidden
-    }
-    
-    class Coordinator {
-        var isHiddenBinding: Binding<Bool>
-        
-        init(isHidden: Binding<Bool>) {
-            self.isHiddenBinding = isHidden
-        }
-        
-        func updateBinding(_ value: Bool) {
-            DispatchQueue.main.async { [weak self] in
-                self?.isHiddenBinding.wrappedValue = value
-            }
-        }
-    }
-}
-
-/// Native AppKit view for the Hide button with mouse tracking.
-class HideButtonView: NSView {
-    var onPressChanged: ((Bool) -> Void)?
-    private var isPressed = false {
-        didSet {
-            needsDisplay = true
-            onPressChanged?(isPressed)
-        }
-    }
-    private var trackingArea: NSTrackingArea?
-    
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        setupView()
-    }
-    
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupView()
-    }
-    
-    private func setupView() {
-        wantsLayer = true
-        layer?.cornerRadius = 6
-        updateTrackingArea()
-    }
-    
-    override var intrinsicContentSize: NSSize {
-        return NSSize(width: 50, height: 26)
-    }
-    
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        updateTrackingArea()
-    }
-    
-    private func updateTrackingArea() {
-        if let existing = trackingArea {
-            removeTrackingArea(existing)
-        }
-        trackingArea = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(trackingArea!)
-    }
-    
-    override func mouseDown(with event: NSEvent) {
-        isPressed = true
-    }
-    
-    override func mouseUp(with event: NSEvent) {
-        isPressed = false
-    }
-    
-    override func draw(_ dirtyRect: NSRect) {
-        let backgroundColor = isPressed 
-            ? NSColor.gray.withAlphaComponent(0.3) 
-            : NSColor.gray.withAlphaComponent(0.15)
-        backgroundColor.setFill()
-        
-        let path = NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6)
-        path.fill()
-        
-        NSColor.gray.withAlphaComponent(0.3).setStroke()
-        path.lineWidth = 1
-        path.stroke()
-        
-        // Draw text
-        let text = "Hide"
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13),
-            .foregroundColor: NSColor.labelColor
-        ]
-        let textSize = text.size(withAttributes: attributes)
-        let textRect = NSRect(
-            x: (bounds.width - textSize.width) / 2,
-            y: (bounds.height - textSize.height) / 2,
-            width: textSize.width,
-            height: textSize.height
-        )
-        text.draw(in: textRect, withAttributes: attributes)
     }
 }
 
@@ -479,7 +352,6 @@ struct VirtualSantaPreviewWrapper: View {
     @State private var renderer: SantaPreviewRenderer
     @State private var zoomScale: Double = 0.5
     @State private var azimuthDegrees: Double = -80
-    @State private var isPersonHidden: Bool = false
     private let personStates: AnyPublisher<PersonState, Never>
     
     init() {
@@ -509,16 +381,9 @@ struct VirtualSantaPreviewWrapper: View {
         )
     }
     
-    private func updatePersonHidden() {
-        renderer.setPersonDimmed(isPersonHidden)
-        if let virtualSource = coordinator.detectionSource as? VirtualDetectionSource {
-            virtualSource.forcePersonHidden = isPersonHidden
-        }
-    }
-    
     var body: some View {
         VStack(spacing: 12) {
-            VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, isPersonHidden: $isPersonHidden, renderer: renderer)
+            VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, renderer: renderer)
                 .frame(width: 620, height: 460)
             if let previewSource = coordinator.detectionSource as? DetectionPreviewProviding {
                 DetectionPreview(source: previewSource)
@@ -532,7 +397,6 @@ struct VirtualSantaPreviewWrapper: View {
         }
         .onChange(of: zoomScale) { _, _ in updateCamera() }
         .onChange(of: azimuthDegrees) { _, _ in updateCamera() }
-        .onChange(of: isPersonHidden) { _, _ in updatePersonHidden() }
         .task {
             guard !coordinator.isRunning else { return }
             do {
