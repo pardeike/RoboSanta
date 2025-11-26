@@ -33,7 +33,8 @@ final class SantaPreviewRenderer {
     private var baseRadius: Double = 1.0
     private var baseAzimuth: Double = 0.0
     private var baseElevation: Double = 0.0
-    private let armAngleRange: ClosedRange<Double> = -120...70 // degrees from relaxed to raised
+    private let armAngleDown: Double = 0      // degrees: arm hanging down at rest
+    private let armAngleUp: Double = -150      // degrees: arm raised up
     
     init() {
         scene = SCNScene()
@@ -289,7 +290,7 @@ final class SantaPreviewRenderer {
     
     private func armAngle(for handValue: Double) -> Double {
         let clamped = handValue.clamped(to: 0...1)
-        let degrees = armAngleRange.lowerBound + clamped * (armAngleRange.upperBound - armAngleRange.lowerBound)
+        let degrees = armAngleDown + clamped * (armAngleUp - armAngleDown)
         return deg2rad(degrees)
     }
     
