@@ -354,26 +354,33 @@ struct HideButton: NSViewRepresentable {
     @Binding var isHidden: Bool
     
     func makeCoordinator() -> Coordinator {
-        Coordinator(self)
+        Coordinator(isHidden: $isHidden)
     }
     
     func makeNSView(context: Context) -> HideButtonView {
         let view = HideButtonView()
-        view.onPressChanged = { pressed in
-            context.coordinator.parent.isHidden = pressed
+        view.onPressChanged = { [weak coordinator = context.coordinator] pressed in
+            coordinator?.updateBinding(pressed)
         }
         return view
     }
     
     func updateNSView(_ nsView: HideButtonView, context: Context) {
-        context.coordinator.parent = self
+        // Update the coordinator's binding reference
+        context.coordinator.isHiddenBinding = $isHidden
     }
     
     class Coordinator {
-        var parent: HideButton
+        var isHiddenBinding: Binding<Bool>
         
-        init(_ parent: HideButton) {
-            self.parent = parent
+        init(isHidden: Binding<Bool>) {
+            self.isHiddenBinding = isHidden
+        }
+        
+        func updateBinding(_ value: Bool) {
+            DispatchQueue.main.async { [weak self] in
+                self?.isHiddenBinding.wrappedValue = value
+            }
         }
     }
 }
