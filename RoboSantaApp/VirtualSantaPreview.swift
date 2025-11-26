@@ -218,20 +218,22 @@ final class SantaPreviewRenderer {
         // Positions are mirrored so robot's left arm appears on viewer's right (as when facing someone).
         let shoulderHeight = bodyHeight * 0.82
         let shoulderOffset = bodyRadius + armRadius * 1.2
-        let armGeometry = SCNCylinder(radius: armRadius, height: armLength)
-        armGeometry.firstMaterial = material(color: NSColor(calibratedRed: 0.82, green: 0.09, blue: 0.12, alpha: 1))
         
-        // Robot's left arm (waving) at positive X = viewer's right
+        // Robot's left arm (waving) at positive X = viewer's right - BLUE color
+        let leftArmGeometry = SCNCylinder(radius: armRadius, height: armLength)
+        leftArmGeometry.firstMaterial = material(color: NSColor.systemBlue)
         leftArmPivot.position = SCNVector3(shoulderOffset, shoulderHeight, 0)
         bodyPivot.addChildNode(leftArmPivot)
-        let leftArm = SCNNode(geometry: armGeometry)
+        let leftArm = SCNNode(geometry: leftArmGeometry)
         leftArm.position = SCNVector3(0, -armLength / 2, 0)
         leftArmPivot.addChildNode(leftArm)
         
-        // Robot's right arm at negative X = viewer's left
+        // Robot's right arm at negative X = viewer's left - YELLOW color
+        let rightArmGeometry = SCNCylinder(radius: armRadius, height: armLength)
+        rightArmGeometry.firstMaterial = material(color: NSColor.systemYellow)
         rightArmPivot.position = SCNVector3(-shoulderOffset, shoulderHeight, 0)
         bodyPivot.addChildNode(rightArmPivot)
-        let rightArm = SCNNode(geometry: armGeometry)
+        let rightArm = SCNNode(geometry: rightArmGeometry)
         rightArm.position = SCNVector3(0, -armLength / 2, 0)
         rightArmPivot.addChildNode(rightArm)
         
