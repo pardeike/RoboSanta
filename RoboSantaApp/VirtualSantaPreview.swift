@@ -34,7 +34,7 @@ final class SantaPreviewRenderer {
     private var baseAzimuth: Double = 0.0
     private var baseElevation: Double = 0.0
     private let armAngleDown: Double = 0      // degrees: arm hanging down at rest
-    private let armAngleUp: Double = -150      // degrees: arm raised up
+    private let armAngleUp: Double = -170      // degrees: arm raised up and beyond
     
     init() {
         scene = SCNScene()
@@ -158,8 +158,6 @@ final class SantaPreviewRenderer {
         let headRadius: CGFloat = 0.32
         let armRadius: CGFloat = 0.14
         let armLength: CGFloat = 0.75
-        let cameraStubRadius: CGFloat = 0.06
-        let cameraStubLength: CGFloat = 0.16
         
         // Base cylinder
         let base = SCNCylinder(radius: baseRadius, height: baseHeight)
@@ -191,14 +189,6 @@ final class SantaPreviewRenderer {
         headPivot.addChildNode(headNode)
         headCenterHeight = Float(bodyHeight + headRadius)
         personHeadCenterHeight = headCenterHeight + Float(personHeadRadius * 2)
-        
-        // Camera stub on the upper front of the head.
-        let cameraStub = SCNCylinder(radius: cameraStubRadius, height: cameraStubLength)
-        cameraStub.firstMaterial = material(color: NSColor(calibratedWhite: 0.15, alpha: 1.0))
-        let stubNode = SCNNode(geometry: cameraStub)
-        stubNode.position = SCNVector3(0, headRadius * 0.4, headRadius + cameraStubLength / 2)
-        stubNode.eulerAngles.x = .pi / 2
-        headNode.addChildNode(stubNode)
     
         let eyeRadius: CGFloat = 0.055
         let eyeDepth: CGFloat = eyeRadius * 0.6
