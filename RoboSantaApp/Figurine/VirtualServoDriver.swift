@@ -60,8 +60,34 @@ final class VirtualServoDriver: ServoDriver {
     }
     
     private func updateSimulation() {
-        // Simulate servo moving toward target at velocity limit
-        let maxDelta = velocity * simulationInterval
+        // Simulate servo moving toward target at velocity limit.
+        //
+        // The velocity values passed from settings (e.g., 200, 500 for left hand)
+        // are in Phidget's internal units. Real Phidget hardware clamps these to
+        // its physical limits. For example, a typical RC servo has velocity limits
+        // around 0.1-4.0 in normalized 0-1 space (meaning it takes 0.25-10 seconds
+        // to traverse the full range).
+        //
+        // For virtual mode, we simulate realistic servo behavior by interpreting
+        // the velocity as a fraction of the logical range per second, capped to
+        // prevent instant movement. A velocity of 1.0 means 1 full range per second.
+        //
+        // Since left hand has range 0-1 and settings use values like 200/500,
+        // we need to scale appropriately. Phidget velocity limits are typically
+        // around 1-4 for normalized servos. We simulate by dividing large velocities.
+        //
+        let effectiveVelocity: Double
+        if velocity > 10 {
+            // Large velocity values (e.g., 200, 500) are in Phidget raw units.
+            // Scale down to produce realistic movement speeds.
+            // A velocity of 200 becomes 2.0 (full range in 0.5s).
+            effectiveVelocity = velocity / 100.0
+        } else {
+            // Small velocity values are already in normalized units
+            effectiveVelocity = velocity
+        }
+        
+        let maxDelta = effectiveVelocity * simulationInterval
         let delta = targetPosition - currentPosition
         
         if abs(delta) <= maxDelta {
