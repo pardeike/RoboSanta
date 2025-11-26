@@ -18,9 +18,10 @@ final class VirtualServoDriver: ServoDriver {
     
     /// Velocity values above this threshold are considered Phidget raw units and need scaling.
     private static let velocityScalingThreshold: Double = 10.0
-    /// Factor to divide large velocity values by to produce realistic movement speeds.
-    /// A velocity of 200 becomes 1.0, meaning the servo traverses its full range per second
-    /// (mimics real servo behavior where an arm raise takes ~1 second).
+    /// Factor to divide large velocity values by to convert from Phidget units to normalized velocity.
+    /// A velocity of 200 becomes 1.0 (1 full logical range per second), so a servo moves its
+    /// entire range in 1 second. velocity=500 becomes 2.5 range/sec (full range in 0.4s).
+    /// This produces realistic movement times similar to physical RC servos under load.
     private static let velocityScalingFactor: Double = 200.0
     
     init(configuration: StateMachine.ServoChannelConfiguration) {
@@ -71,32 +72,40 @@ final class VirtualServoDriver: ServoDriver {
     private func updateSimulation() {
         // Simulate servo moving toward target at velocity limit.
         //
-        // The velocity values passed from settings (e.g., 200, 500 for left hand)
-        // are in Phidget's internal units. Real Phidget hardware clamps these to
-        // its physical limits. For example, a typical RC servo has velocity limits
-        // around 0.1-4.0 in normalized 0-1 space (meaning it takes 0.25-10 seconds
-        // to traverse the full range).
+        // VELOCITY MODEL:
+        // Phidget RC servo velocity is specified in normalized position units per second,
+        // where the servo position range is always 0...1 (normalized). The PhidgetServoDriver
+        // maps logical positions (e.g., -30...30 degrees for head, 0...1 for hand) to this
+        // 0...1 range before commanding the servo.
         //
-        // For virtual mode, we simulate realistic servo behavior by interpreting
-        // the velocity as a fraction of the logical range per second, capped to
-        // prevent instant movement. A velocity of 1.0 means 1 full range per second.
+        // To match physical behavior, we interpret the velocity as "fraction of logical
+        // range per second". This means:
+        //   - velocity=1.0 → servo can traverse its full logical range in 1 second
+        //   - velocity=2.0 → servo can traverse its full logical range in 0.5 seconds
         //
-        // Since left hand has range 0-1 and settings use values like 200/500,
-        // we need to scale appropriately. Phidget velocity limits are typically
-        // around 1-4 for normalized servos. We simulate by dividing large velocities.
+        // The settings use large values like 200, 500 which are scaled down to get
+        // realistic speeds. The scaling factor of 200 means:
+        //   - velocity=200 → 1.0 range/sec (full range in 1 second)
+        //   - velocity=500 → 2.5 range/sec (full range in 0.4 seconds)
         //
-        let effectiveVelocity: Double
+        // The key insight is that maxDelta must be in LOGICAL units (same as currentPosition),
+        // so we multiply the normalized velocity by the logical range span.
+        //
+        let normalizedVelocity: Double
         if velocity > Self.velocityScalingThreshold {
             // Large velocity values (e.g., 200, 500) are in Phidget raw units.
             // Scale down to produce realistic movement speeds.
-            // A velocity of 200 becomes 2.0 (full range in 0.5s).
-            effectiveVelocity = velocity / Self.velocityScalingFactor
+            normalizedVelocity = velocity / Self.velocityScalingFactor
         } else {
             // Small velocity values are already in normalized units
-            effectiveVelocity = velocity
+            normalizedVelocity = velocity
         }
         
-        let maxDelta = effectiveVelocity * simulationInterval
+        // Convert normalized velocity (range/sec) to logical velocity (logical units/sec)
+        let logicalRangeSpan = configuration.logicalRange.span
+        let logicalVelocity = normalizedVelocity * logicalRangeSpan
+        
+        let maxDelta = logicalVelocity * simulationInterval
         let delta = targetPosition - currentPosition
         
         if abs(delta) <= maxDelta {
