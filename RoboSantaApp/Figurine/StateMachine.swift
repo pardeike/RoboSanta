@@ -1259,7 +1259,8 @@ final class StateMachine {
 
     private func logState(_ label: String, values: [String: CustomStringConvertible] = [:]) {
         guard loggingEnabled else { return }
-        var message = "[state] \(label)"
+        let timestamp = String(format: "%.3f", Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 1000))
+        var message = "[\(timestamp)] [state] \(label)"
         if !values.isEmpty {
             let details = values.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
             message += " " + details
