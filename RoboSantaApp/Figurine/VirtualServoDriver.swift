@@ -16,6 +16,11 @@ final class VirtualServoDriver: ServoDriver {
     private var simulationTimer: Timer?
     private let simulationInterval: TimeInterval = 0.02  // 50 Hz, matches StateMachine loop
     
+    /// Velocity values above this threshold are considered Phidget raw units and need scaling.
+    private static let velocityScalingThreshold: Double = 10.0
+    /// Factor to divide large velocity values by to produce realistic movement speeds.
+    private static let velocityScalingFactor: Double = 100.0
+    
     init(configuration: StateMachine.ServoChannelConfiguration) {
         self.configuration = configuration
         self.currentPosition = configuration.homePosition
@@ -77,11 +82,11 @@ final class VirtualServoDriver: ServoDriver {
         // around 1-4 for normalized servos. We simulate by dividing large velocities.
         //
         let effectiveVelocity: Double
-        if velocity > 10 {
+        if velocity > Self.velocityScalingThreshold {
             // Large velocity values (e.g., 200, 500) are in Phidget raw units.
             // Scale down to produce realistic movement speeds.
             // A velocity of 200 becomes 2.0 (full range in 0.5s).
-            effectiveVelocity = velocity / 100.0
+            effectiveVelocity = velocity / Self.velocityScalingFactor
         } else {
             // Small velocity values are already in normalized units
             effectiveVelocity = velocity
