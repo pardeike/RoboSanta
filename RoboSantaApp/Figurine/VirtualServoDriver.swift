@@ -19,7 +19,9 @@ final class VirtualServoDriver: ServoDriver {
     /// Velocity values above this threshold are considered Phidget raw units and need scaling.
     private static let velocityScalingThreshold: Double = 10.0
     /// Factor to divide large velocity values by to produce realistic movement speeds.
-    private static let velocityScalingFactor: Double = 100.0
+    /// A velocity of 200 becomes 0.5, meaning the servo traverses half its range per second
+    /// (full range in 2 seconds for a normalized 0-1 servo).
+    private static let velocityScalingFactor: Double = 400.0
     
     init(configuration: StateMachine.ServoChannelConfiguration) {
         self.configuration = configuration

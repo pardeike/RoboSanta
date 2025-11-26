@@ -446,7 +446,11 @@ final class StateMachine {
                 let hadFocus = behavior.focusStart != nil
                 behavior.clearFocus()
                 if hadFocus { startLeftHandCooldown(now: now) }
-                resetLeftHandAutopilot()
+                // Only reset autopilot if not in the middle of lowering.
+                // If lowering, the position observer will complete the sequence.
+                if behavior.leftHandAutoState != .lowering {
+                    resetLeftHandAutopilot()
+                }
                 behavior.facesVisible = false
                 logEvent("tracking.lost")
                 logState("tracking.lost")
@@ -1064,10 +1068,9 @@ final class StateMachine {
         guard let target = behavior.leftHandTargetAngle else { return }
         
         if hasReachedTarget(measured: angle, target: target) {
-            logState("leftHand.reached", values: ["angle": angle])
-            
             switch behavior.leftHandAutoState {
             case .raising:
+                logState("leftHand.reached", values: ["angle": angle])
                 // Start waving
                 let cycles = max(1, settings.leftHandWaveCycles)
                 behavior.leftHandAutoState = .waving(cyclesRemaining: cycles, phase: .movingDown)
@@ -1077,6 +1080,7 @@ final class StateMachine {
                 logState("leftHand.startWaving", values: ["cycles": cycles])
                 
             case .waving(let cyclesRemaining, let phase):
+                logState("leftHand.reached", values: ["angle": angle])
                 let maxAngle = configuration.leftHand.logicalRange.upperBound
                 let waveTarget = maxAngle - settings.leftHandWaveBackAngle
                 
@@ -1101,6 +1105,7 @@ final class StateMachine {
                 }
                 
             case .lowering:
+                logState("leftHand.reached", values: ["angle": angle])
                 // Reached lowered position
                 enterLeftHandCooldown(now: now)
                 
