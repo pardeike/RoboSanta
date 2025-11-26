@@ -953,7 +953,9 @@ Logical velocity (units per second)
 Max delta per tick (units)
 ```
 
-**Example calculations:**
+**Example calculations (based on default servo configurations):**
+
+> **Note:** These are example ranges from the default servo configurations in `StateMachineSettings.swift`. Actual values may vary based on hardware setup and tuning.
 
 | Servo | Logical Range | Velocity | Normalized | Logical/sec | Per Tick (0.02s) |
 |-------|---------------|----------|------------|-------------|------------------|
