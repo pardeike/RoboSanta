@@ -29,6 +29,10 @@ final class SantaPreviewRenderer {
         mat.fillMode = .fill
         return mat
     }()
+    /// Opacity when person is "hidden" but still slightly visible
+    private let hiddenPersonOpacity: CGFloat = 0.15
+    /// Normal opacity for person
+    private let normalPersonOpacity: CGFloat = 0.8
     private var headCenterHeight: Float = 1.0
     private var baseRadius: Double = 1.0
     private var baseAzimuth: Double = 0.0
@@ -61,6 +65,12 @@ final class SantaPreviewRenderer {
         let y: Float = personHeadCenterHeight
         let z: Float = Float(max(state.distance, 0.1))
         personNode.position = SCNVector3(clampedX, y, z)
+    }
+    
+    /// Set the person's visibility state (dimmed when hidden, normal when visible)
+    func setPersonDimmed(_ dimmed: Bool) {
+        let opacity = dimmed ? hiddenPersonOpacity : normalPersonOpacity
+        personMaterial.diffuse.contents = NSColor.green.withAlphaComponent(opacity)
     }
     
     func updateCamera(azimuthDegrees: Double, zoomScale: Double) {
@@ -308,6 +318,7 @@ final class SantaPreviewRenderer {
 struct VirtualSantaPreview: View {
     @Binding var zoomScale: Double
     @Binding var azimuthDegrees: Double
+    @Binding var isPersonHidden: Bool
     let renderer: SantaPreviewRenderer
     
     var body: some View {
@@ -319,11 +330,20 @@ struct VirtualSantaPreview: View {
                     options: [.rendersContinuously]
                 )
                 .cornerRadius(16)
-                Slider(value: $azimuthDegrees, in: -90...90) {
-                    Text("Rotation").padding(.trailing, 20)
-                }
-                Slider(value: $zoomScale, in: 0.5...1.5) {
-                    Text("Zoom").padding(.trailing, 20)
+                HStack(spacing: 12) {
+                    Slider(value: $azimuthDegrees, in: -90...90) {
+                        Text("Rotation").padding(.trailing, 8)
+                    }
+                    Slider(value: $zoomScale, in: 0.5...1.5) {
+                        Text("Zoom").padding(.trailing, 8)
+                    }
+                    Button("Hide") { }
+                        .buttonStyle(.bordered)
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { _ in isPersonHidden = true }
+                                .onEnded { _ in isPersonHidden = false }
+                        )
                 }
             }
         }
@@ -338,6 +358,7 @@ struct VirtualSantaPreviewWrapper: View {
     @State private var renderer: SantaPreviewRenderer
     @State private var zoomScale: Double = 0.5
     @State private var azimuthDegrees: Double = -80
+    @State private var isPersonHidden: Bool = false
     private let personStates: AnyPublisher<PersonState, Never>
     
     init() {
@@ -367,9 +388,16 @@ struct VirtualSantaPreviewWrapper: View {
         )
     }
     
+    private func updatePersonHidden() {
+        renderer.setPersonDimmed(isPersonHidden)
+        if let virtualSource = coordinator.detectionSource as? VirtualDetectionSource {
+            virtualSource.forcePersonHidden = isPersonHidden
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 12) {
-            VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, renderer: renderer)
+            VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, isPersonHidden: $isPersonHidden, renderer: renderer)
                 .frame(width: 620, height: 460)
             if let previewSource = coordinator.detectionSource as? DetectionPreviewProviding {
                 DetectionPreview(source: previewSource)
@@ -383,6 +411,7 @@ struct VirtualSantaPreviewWrapper: View {
         }
         .onChange(of: zoomScale) { _, _ in updateCamera() }
         .onChange(of: azimuthDegrees) { _, _ in updateCamera() }
+        .onChange(of: isPersonHidden) { _, _ in updatePersonHidden() }
         .task {
             guard !coordinator.isRunning else { return }
             do {
