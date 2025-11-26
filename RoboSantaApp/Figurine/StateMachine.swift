@@ -445,8 +445,10 @@ final class StateMachine {
 
             case .personLost:
                 let hadFocus = behavior.focusStart != nil
+                let handWasActive = behavior.leftHandAutoState != .lowered
                 behavior.clearFocus()
-                if hadFocus { startLeftHandCooldown(now: now) }
+                // Only start cooldown if hand was actively raised/waving
+                if hadFocus && handWasActive { startLeftHandCooldown(now: now) }
                 // Only reset autopilot if not in the middle of lowering.
                 // If lowering, the position observer will complete the sequence.
                 if behavior.leftHandAutoState != .lowering {
@@ -1040,6 +1042,7 @@ final class StateMachine {
     private func armLeftHandAutopilotIfEligible(now: Date) {
         guard !isLeftHandTimeCooldownActive(now: now) else { return }
         behavior.leftHandAutopilotArmed = true
+        logState("leftHand.armed")
     }
 
     private func startLeftHandCooldown(now: Date) {
