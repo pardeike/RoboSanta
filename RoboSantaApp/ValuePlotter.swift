@@ -2,6 +2,7 @@
 // A scrolling graph that plots servo values over time.
 
 import SwiftUI
+import Combine
 
 /// Colors for each servo value
 enum ServoColor {
