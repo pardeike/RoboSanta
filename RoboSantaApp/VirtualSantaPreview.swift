@@ -353,18 +353,28 @@ struct VirtualSantaPreview: View {
 struct HideButton: NSViewRepresentable {
     @Binding var isHidden: Bool
     
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
     func makeNSView(context: Context) -> HideButtonView {
         let view = HideButtonView()
         view.onPressChanged = { pressed in
-            DispatchQueue.main.async {
-                self.isHidden = pressed
-            }
+            context.coordinator.parent.isHidden = pressed
         }
         return view
     }
     
     func updateNSView(_ nsView: HideButtonView, context: Context) {
-        // No updates needed
+        context.coordinator.parent = self
+    }
+    
+    class Coordinator {
+        var parent: HideButton
+        
+        init(_ parent: HideButton) {
+            self.parent = parent
+        }
     }
 }
 
