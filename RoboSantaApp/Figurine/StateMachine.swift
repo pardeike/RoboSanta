@@ -1214,8 +1214,11 @@ final class StateMachine {
     }
     
     private func leftHandValue(deltaTime: TimeInterval) -> Double {
-        // The position is now controlled directly via setLeftHandTarget
-        // This function just returns the gesture value for fallback
+        // Return the actual measured position if available (for smooth animation)
+        if let measured = behavior.leftHandMeasuredAngle {
+            return measured
+        }
+        // Fallback to gesture-based values
         switch behavior.leftGesture {
         case .down:
             return configuration.leftHand.logicalRange.lowerBound
