@@ -1024,14 +1024,19 @@ final class StateMachine {
     private var leftHandTimeoutEnabled: Bool { settings.leftHandMaxRaisedDuration > 0 }
     
     private func isLeftHandTimeCooldownActive(now: Date) -> Bool {
-        guard let until = behavior.leftHandCooldownUntil else { return false }
+        guard let until = behavior.leftHandCooldownUntil else {
+            // No time-based cooldown, also clear the active flag
+            behavior.leftHandCooldownActive = false
+            return false
+        }
         if now < until { return true }
+        // Cooldown expired, clear both
         behavior.leftHandCooldownUntil = nil
+        behavior.leftHandCooldownActive = false
         return false
     }
 
     private func armLeftHandAutopilotIfEligible(now: Date) {
-        guard !behavior.leftHandCooldownActive else { return }
         guard !isLeftHandTimeCooldownActive(now: now) else { return }
         behavior.leftHandAutopilotArmed = true
     }
@@ -1137,7 +1142,6 @@ final class StateMachine {
         guard autopilotEngaged else { return }
         
         if isLeftHandTimeCooldownActive(now: now) { return }
-        if behavior.leftHandCooldownActive { return }
         
         // Check max raised duration timeout
         if leftHandTimeoutEnabled,
