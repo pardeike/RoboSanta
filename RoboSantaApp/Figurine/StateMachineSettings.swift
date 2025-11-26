@@ -153,7 +153,7 @@ extension StateMachine {
             leftHandWaveSpeed: 500,
             leftHandLowerSpeed: 120,
             leftHandMaxRaisedDuration: 6.0,
-            minimumLeftHandCooldown: 20.0,
+            minimumLeftHandCooldown: 4.0, // TODO revert back to 20.0,
             leftHandPositionTolerance: 0.03,
             figurineConfiguration: .init(
                 leftHand: .defaultLeftHand,

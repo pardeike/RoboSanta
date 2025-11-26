@@ -50,17 +50,16 @@ final class SantaPreviewRenderer {
         rightArmPivot.eulerAngles.x = CGFloat(armAngle(for: pose.rightHand))
     }
     
-    func applyPerson(relativeOffset: Double?) {
-        guard let offset = relativeOffset else {
+    func applyPerson(state: PersonState?) {
+        guard let state, state.isPresent else {
             personNode.isHidden = true
             return
         }
         personNode.isHidden = false
-        let clamped = offset.clamped(to: -1...1)
-        let x = Float(clamped) * personWalkHalfWidth
+        let clampedX = Float(state.horizontalPosition.clamped(to: -Double(personWalkHalfWidth)...Double(personWalkHalfWidth)))
         let y: Float = personHeadCenterHeight
-        let z: Float = personDistance
-        personNode.position = SCNVector3(x, y, z)
+        let z: Float = Float(max(state.distance, 0.1))
+        personNode.position = SCNVector3(clampedX, y, z)
     }
     
     func updateCamera(azimuthDegrees: Double, zoomScale: Double) {
@@ -352,13 +351,30 @@ struct VirtualSantaPreview: View {
 // MARK: - Xcode Preview
 
 struct VirtualSantaPreviewWrapper: View {
+    @StateObject private var coordinator: RuntimeCoordinator
     @State private var renderer: SantaPreviewRenderer
     @State private var zoomScale: Double = 0.5
     @State private var azimuthDegrees: Double = -80
+    private let personStates: AnyPublisher<PersonState, Never>
     
     init() {
-        let r = SantaPreviewRenderer()
-        _renderer = State(wrappedValue: r)
+        let renderer = SantaPreviewRenderer()
+        let generator = OscillatingPersonGenerator(
+            config: OscillatingPersonConfig(seed: 42)
+        )
+        let settings = StateMachine.Settings.default
+        let runtimeCoordinator = RuntimeCoordinator(
+            runtime: .virtual,
+            settings: settings,
+            personGenerator: generator
+        )
+        _coordinator = StateObject(wrappedValue: runtimeCoordinator)
+        _renderer = State(wrappedValue: renderer)
+        if let virtualSource = runtimeCoordinator.detectionSource as? VirtualDetectionSource {
+            personStates = virtualSource.personStates
+        } else {
+            personStates = Empty().eraseToAnyPublisher()
+        }
     }
     
     private func updateCamera() {
@@ -368,24 +384,38 @@ struct VirtualSantaPreviewWrapper: View {
         )
     }
     
-    private let timer = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
-    
     var body: some View {
-        VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, renderer: renderer)
-            .frame(width: 620, height: 460)
+        VStack(spacing: 12) {
+            VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, renderer: renderer)
+                .frame(width: 620, height: 460)
+            if let previewSource = coordinator.detectionSource as? DetectionPreviewProviding {
+                DetectionPreview(source: previewSource)
+                    .frame(height: 160)
+                    .cornerRadius(12)
+            }
+        }
+        .onAppear {
+            renderer.apply(pose: coordinator.stateMachine.currentPose())
+            updateCamera()
+        }
         .onChange(of: zoomScale) { _, _ in updateCamera() }
         .onChange(of: azimuthDegrees) { _, _ in updateCamera() }
-        .onReceive(timer) { date in
-            let t = date.timeIntervalSinceReferenceDate
-            let pose = StateMachine.FigurinePose(
-                bodyAngle: sin(t * 0.4) * 25,
-                headAngle: sin(t * 0.9) * 15,
-                leftHand: (sin(t * 0.8) + 1) / 2,
-                rightHand: ((sin(t * 1.1) + 1) / 2) * 0.85
-            )
+        .task {
+            guard !coordinator.isRunning else { return }
+            do {
+                try await coordinator.start()
+            } catch {
+                print("Failed to start preview coordinator: \(error)")
+            }
+        }
+        .onDisappear {
+            Task { await coordinator.stop() }
+        }
+        .onReceive(coordinator.poseUpdates.receive(on: RunLoop.main)) { pose in
             renderer.apply(pose: pose)
-            renderer.applyPerson(relativeOffset: sin(t * 0.5))
-            updateCamera()
+        }
+        .onReceive(personStates.receive(on: RunLoop.main)) { state in
+            renderer.applyPerson(state: state.isPresent ? state : nil)
         }
     }
 }

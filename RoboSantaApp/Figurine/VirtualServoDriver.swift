@@ -36,6 +36,8 @@ final class VirtualServoDriver: ServoDriver {
         if let timer = simulationTimer {
             RunLoop.main.add(timer, forMode: .common)
         }
+        // Seed the observer with the initial position so the state machine has a measured value.
+        positionObserver?(currentPosition)
         logTelemetry("servo.attach", values: ["channel": configuration.channel])
     }
     

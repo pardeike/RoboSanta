@@ -42,25 +42,35 @@ protocol PersonGenerator {
 /// Configuration for the oscillating person generator.
 struct OscillatingPersonConfig {
     /// Amplitude of lateral oscillation in meters (default 2.4m = 0.8 * 3m walk width)
-    var amplitude: Double = 2.4
+    var amplitude: Double = 2.5
     /// Period of one full oscillation cycle in seconds
-    var period: TimeInterval = 6.0
+    var period: TimeInterval = 8.0
     /// Distance from figurine in meters
     var distance: Double = 2.0
     /// Probability of person being visible per frame (0...1)
-    var presenceProbability: Double = 0.8
+    var presenceProbability: Double = 1.0
+    /// Probability of vanishing when reaching an extreme, before reappearing on the other side
+    var extremeVanishProbability: Double = 0.1
+    /// Base duration range for how long the person is gone when vanishing
+    var vanishDurationRange: ClosedRange<TimeInterval> = 0.8...1.6
+    /// Additional delay before reappearing after a vanish (added on top of vanishDurationRange)
+    var reappearDelayRange: ClosedRange<TimeInterval> = 0.5...1.5
+    /// Threshold (0..1) for detecting an "extreme" of the oscillation
+    var extremeThreshold: Double = 0.92
     /// Seed for deterministic simulation (nil = random)
     var seed: UInt64? = nil
     
-    static let `default` = OscillatingPersonConfig()
+    static let `default` = OscillatingPersonConfig(seed: UInt64.random(in: 0...1))
 }
 
-/// A simple person generator that oscillates back and forth.
-/// This is the default generator that replicates the existing VirtualSantaPreview behavior.
+/// A simple person generator that oscillates back and forth, occasionally vanishing at extremes
+/// and reappearing on the opposite side to simulate someone walking through the scene.
 struct OscillatingPersonGenerator: PersonGenerator {
     private var config: OscillatingPersonConfig
     private var phase: Double = 0
     private var rng: RandomGenerator
+    private var vanishRemaining: TimeInterval = 0
+    private var wasNearExtreme = false
     
     init(config: OscillatingPersonConfig = .default) {
         self.config = config
@@ -72,12 +82,29 @@ struct OscillatingPersonGenerator: PersonGenerator {
     }
     
     mutating func update(deltaTime: TimeInterval) -> PersonState {
+        if vanishRemaining > 0 {
+            vanishRemaining = max(0, vanishRemaining - deltaTime)
+            return .absent
+        }
+
         // Update phase for oscillation
         phase += deltaTime * (2 * .pi / config.period)
         if phase > 2 * .pi { phase -= 2 * .pi }
         
         // Calculate horizontal position (in meters)
-        let horizontalPosition = sin(phase) * config.amplitude
+        let normalized = sin(phase)
+        let horizontalPosition = normalized * config.amplitude
+        let nearExtreme = abs(normalized) >= config.extremeThreshold
+
+        // Occasionally vanish at extremes and reappear on the other side
+        if nearExtreme && !wasNearExtreme && rng.nextDouble() < config.extremeVanishProbability {
+            vanishRemaining = random(in: config.vanishDurationRange) + random(in: config.reappearDelayRange)
+            // Flip to the opposite side so reappearance feels like walking across
+            phase = normalized > 0 ? -Double.pi / 2 : Double.pi / 2
+            wasNearExtreme = false
+            return .absent
+        }
+        wasNearExtreme = nearExtreme
         
         // Determine visibility
         let isPresent = rng.nextDouble() < config.presenceProbability
@@ -95,6 +122,13 @@ struct OscillatingPersonGenerator: PersonGenerator {
         if let seed = config.seed {
             rng = RandomGenerator(splitMix: SplitMix64(seed: seed))
         }
+        vanishRemaining = 0
+        wasNearExtreme = false
+    }
+
+    private mutating func random(in range: ClosedRange<TimeInterval>) -> TimeInterval {
+        let t = rng.nextDouble()
+        return range.lowerBound + (range.upperBound - range.lowerBound) * t
     }
 }
 

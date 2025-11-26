@@ -188,6 +188,7 @@ final class StateMachine {
         var leftHandCooldownUntil: Date?
         var leftHandAutopilotArmed = false
         var leftHandMeasuredAngle: Double?
+        var rightHandMeasuredAngle: Double?
 
         mutating func focus(on heading: Double, now: Date) {
             trackingHeading = heading
@@ -259,6 +260,12 @@ final class StateMachine {
             self.workerQueue.async {
                 self.behavior.leftHandMeasuredAngle = angle
                 self.handleLeftHandPositionUpdate(angle: angle, now: Date())
+            }
+        }
+        rightHandDriver.setPositionObserver { [weak self] angle in
+            guard let self else { return }
+            self.workerQueue.async {
+                self.behavior.rightHandMeasuredAngle = angle
             }
         }
         bodyDriver.setPositionObserver { [weak self] angle in
@@ -1108,11 +1115,11 @@ final class StateMachine {
         
         // If not tracking, ensure hand is lowered
         guard trackingActive else {
+            let minAngle = configuration.leftHand.logicalRange.lowerBound
             if behavior.leftHandAutoState != .lowered || behavior.leftHandCooldownActive {
                 // Start lowering if not already lowered
                 if behavior.leftHandAutoState != .lowered && behavior.leftHandAutoState != .lowering {
                     behavior.leftHandAutoState = .lowering
-                    let minAngle = configuration.leftHand.logicalRange.lowerBound
                     setLeftHandTarget(angle: minAngle, speed: settings.leftHandLowerSpeed)
                     logState("leftHand.loweringDueToTrackingloss")
                 }

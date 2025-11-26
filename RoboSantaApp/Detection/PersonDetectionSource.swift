@@ -4,6 +4,7 @@
 import Foundation
 import CoreGraphics
 import Combine
+import QuartzCore
 
 /// Represents a detected face in camera/virtual space.
 struct DetectedFace: Equatable {
@@ -38,4 +39,9 @@ protocol PersonDetectionSource {
     
     /// Stop detection
     func stop()
+}
+
+/// Sources that can render a live preview into a CALayer (real camera or synthetic).
+protocol DetectionPreviewProviding: AnyObject {
+    func attachPreview(to layer: CALayer)
 }
