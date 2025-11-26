@@ -77,10 +77,6 @@ final class SantaPreviewRenderer {
         )
     }
     
-    var defaultAzimuthDegrees: Double {
-        rad2deg(Double(baseAzimuth))
-    }
-    
     // MARK: - Scene setup
     
     private func setupScene() {
@@ -294,10 +290,6 @@ final class SantaPreviewRenderer {
     
     private func deg2rad(_ degrees: Double) -> Double {
         degrees * .pi / 180
-    }
-    
-    private func rad2deg(_ radians: Double) -> Double {
-        radians * 180 / .pi
     }
     
     private func captureCameraDefaults() {
