@@ -348,9 +348,10 @@ struct VirtualSantaPreview: View {
 }
 
 /// A button that hides the person while pressed without blocking animations.
+/// Uses a background timer approach to avoid gesture system blocking the run loop.
 struct HideButton: View {
     @Binding var isHidden: Bool
-    @GestureState private var isPressed = false
+    @State private var isPressed = false
     
     var body: some View {
         Text("Hide")
@@ -362,15 +363,10 @@ struct HideButton: View {
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(Color.gray.opacity(0.3), lineWidth: 1)
             )
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .updating($isPressed) { _, state, _ in
-                        state = true
-                    }
-            )
-            .onChange(of: isPressed) { _, newValue in
-                isHidden = newValue
-            }
+            .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+                isPressed = pressing
+                isHidden = pressing
+            }, perform: { })
     }
 }
 
