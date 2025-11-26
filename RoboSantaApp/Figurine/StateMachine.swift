@@ -188,6 +188,7 @@ final class StateMachine {
         var leftHandCooldownUntil: Date?
         var leftHandAutopilotArmed = false
         var leftHandMeasuredAngle: Double?
+        var leftHandLastLoggedAngle: Double?
         var rightHandMeasuredAngle: Double?
 
         mutating func focus(on heading: Double, now: Date) {
@@ -444,9 +445,15 @@ final class StateMachine {
 
             case .personLost:
                 let hadFocus = behavior.focusStart != nil
+                let handWasActive = behavior.leftHandAutoState != .lowered
                 behavior.clearFocus()
-                if hadFocus { startLeftHandCooldown(now: now) }
-                resetLeftHandAutopilot()
+                // Only start cooldown if hand was actively raised/waving
+                if hadFocus && handWasActive { startLeftHandCooldown(now: now) }
+                // Only reset autopilot if not in the middle of lowering.
+                // If lowering, the position observer will complete the sequence.
+                if behavior.leftHandAutoState != .lowering {
+                    resetLeftHandAutopilot()
+                }
                 behavior.facesVisible = false
                 logEvent("tracking.lost")
                 logState("tracking.lost")
@@ -1020,16 +1027,22 @@ final class StateMachine {
     private var leftHandTimeoutEnabled: Bool { settings.leftHandMaxRaisedDuration > 0 }
     
     private func isLeftHandTimeCooldownActive(now: Date) -> Bool {
-        guard let until = behavior.leftHandCooldownUntil else { return false }
+        guard let until = behavior.leftHandCooldownUntil else {
+            // No time-based cooldown, also clear the active flag
+            behavior.leftHandCooldownActive = false
+            return false
+        }
         if now < until { return true }
+        // Cooldown expired, clear both
         behavior.leftHandCooldownUntil = nil
+        behavior.leftHandCooldownActive = false
         return false
     }
 
     private func armLeftHandAutopilotIfEligible(now: Date) {
-        guard !behavior.leftHandCooldownActive else { return }
         guard !isLeftHandTimeCooldownActive(now: now) else { return }
         behavior.leftHandAutopilotArmed = true
+        logState("leftHand.armed")
     }
 
     private func startLeftHandCooldown(now: Date) {
@@ -1051,6 +1064,7 @@ final class StateMachine {
 
     private func setLeftHandTarget(angle: Double, speed: Double) {
         behavior.leftHandTargetAngle = angle
+        behavior.leftHandLastLoggedAngle = nil  // Reset so first position update gets logged
         leftHandDriver.setVelocity(speed)
         leftHandDriver.move(toLogical: angle)
         logState("leftHand.target", values: ["angle": angle, "speed": speed])
@@ -1063,11 +1077,24 @@ final class StateMachine {
     private func handleLeftHandPositionUpdate(angle: Double, now: Date) {
         guard let target = behavior.leftHandTargetAngle else { return }
         
+        // Log intermediate positions during movement (every 0.1 change)
+        let logThreshold = 0.1
+        if behavior.leftHandAutoState != .lowered && behavior.leftHandAutoState != .pausingAtTop {
+            if let lastLogged = behavior.leftHandLastLoggedAngle {
+                if abs(angle - lastLogged) >= logThreshold {
+                    logState("leftHand.position", values: ["angle": String(format: "%.2f", angle)])
+                    behavior.leftHandLastLoggedAngle = angle
+                }
+            } else {
+                logState("leftHand.position", values: ["angle": String(format: "%.2f", angle)])
+                behavior.leftHandLastLoggedAngle = angle
+            }
+        }
+        
         if hasReachedTarget(measured: angle, target: target) {
-            logState("leftHand.reached", values: ["angle": angle])
-            
             switch behavior.leftHandAutoState {
             case .raising:
+                logState("leftHand.reached", values: ["angle": angle])
                 // Start waving
                 let cycles = max(1, settings.leftHandWaveCycles)
                 behavior.leftHandAutoState = .waving(cyclesRemaining: cycles, phase: .movingDown)
@@ -1077,6 +1104,7 @@ final class StateMachine {
                 logState("leftHand.startWaving", values: ["cycles": cycles])
                 
             case .waving(let cyclesRemaining, let phase):
+                logState("leftHand.reached", values: ["angle": angle])
                 let maxAngle = configuration.leftHand.logicalRange.upperBound
                 let waveTarget = maxAngle - settings.leftHandWaveBackAngle
                 
@@ -1101,6 +1129,7 @@ final class StateMachine {
                 }
                 
             case .lowering:
+                logState("leftHand.reached", values: ["angle": angle])
                 // Reached lowered position
                 enterLeftHandCooldown(now: now)
                 
@@ -1132,7 +1161,6 @@ final class StateMachine {
         guard autopilotEngaged else { return }
         
         if isLeftHandTimeCooldownActive(now: now) { return }
-        if behavior.leftHandCooldownActive { return }
         
         // Check max raised duration timeout
         if leftHandTimeoutEnabled,
@@ -1186,8 +1214,11 @@ final class StateMachine {
     }
     
     private func leftHandValue(deltaTime: TimeInterval) -> Double {
-        // The position is now controlled directly via setLeftHandTarget
-        // This function just returns the gesture value for fallback
+        // Return the actual measured position if available (for smooth animation)
+        if let measured = behavior.leftHandMeasuredAngle {
+            return measured
+        }
+        // Fallback to gesture-based values
         switch behavior.leftGesture {
         case .down:
             return configuration.leftHand.logicalRange.lowerBound
@@ -1254,7 +1285,8 @@ final class StateMachine {
 
     private func logState(_ label: String, values: [String: CustomStringConvertible] = [:]) {
         guard loggingEnabled else { return }
-        var message = "[state] \(label)"
+        let timestamp = String(format: "%.3f", Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 1000))
+        var message = "[\(timestamp)] [state] \(label)"
         if !values.isEmpty {
             let details = values.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
             message += " " + details
