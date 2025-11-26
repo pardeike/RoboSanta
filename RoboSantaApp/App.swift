@@ -55,6 +55,7 @@ struct VirtualModeView: View {
     @State private var pose = StateMachine.FigurinePose()
     @State private var zoomScale: Double = 0.5
     @State private var azimuthDegrees: Double = -80
+    @StateObject private var dataBuffer = ServoDataBuffer(maxPoints: 200)
 
     private var personStatesPublisher: AnyPublisher<PersonState, Never> {
         if let virtualSource = coordinator.detectionSource as? VirtualDetectionSource {
@@ -63,16 +64,19 @@ struct VirtualModeView: View {
         return Empty().eraseToAnyPublisher()
     }
     
-    private func poseLabel(_ title: String, value: String) -> some View {
+    private func poseLabel(_ title: String, value: String, backgroundColor: Color) -> some View {
         VStack(spacing: 4) {
             Text(title)
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(.white)
             Text(value)
                 .font(.system(.title3, design: .rounded).monospacedDigit())
-                .foregroundColor(.primary)
+                .foregroundColor(.white)
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(backgroundColor)
+        .cornerRadius(6)
     }
     
     private func updateCamera() {
@@ -83,40 +87,43 @@ struct VirtualModeView: View {
     }
     
     var body: some View {
-        VStack(spacing: 16) {
-            VStack(spacing: 4) {
-                Text("🎅 Virtual Santa Mode")
-                    .font(.title2)
-                Text("Live pose driven by the virtual servos")
-                    .foregroundColor(.secondary)
-            }
-            VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, renderer: renderer)
-                .frame(minWidth: 500, minHeight: 420)
-
-            if let previewSource = coordinator.detectionSource as? DetectionPreviewProviding {
-                VStack(spacing: 6) {
-                    Text("Virtual camera feed")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    DetectionPreview(source: previewSource)
-                        .frame(height: 200)
+        GeometryReader { geometry in
+            VStack(spacing: 12) {
+                // Top half: 3D Santa Preview
+                VStack(spacing: 4) {
+                    VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, renderer: renderer)
+                }
+                .frame(height: geometry.size.height * 0.48)
+                
+                // Bottom half: Camera feed (left) and Value plotter (right)
+                HStack(spacing: 12) {
+                    // Left side: Virtual camera feed
+                    if let previewSource = coordinator.detectionSource as? DetectionPreviewProviding {
+                        DetectionPreview(source: previewSource)
+                            .cornerRadius(12)
+                    } else {
+                        Rectangle()
+                            .fill(Color.black.opacity(0.3))
+                            .cornerRadius(12)
+                    }
+                    
+                    // Right side: Value plotter
+                    ValuePlotter(buffer: dataBuffer)
                         .cornerRadius(12)
                 }
+                .frame(height: geometry.size.height * 0.38)
+                
+                // Bottom: Pose labels with colored backgrounds
+                HStack(spacing: 8) {
+                    poseLabel("Body", value: String(format: "%.1f°", pose.bodyAngle), backgroundColor: ServoColor.bodyBackground)
+                    poseLabel("Head", value: String(format: "%.1f°", pose.headAngle), backgroundColor: ServoColor.headBackground)
+                    poseLabel("Left arm", value: String(format: "%.2f", pose.leftHand), backgroundColor: ServoColor.leftArmBackground)
+                    poseLabel("Right arm", value: String(format: "%.2f", pose.rightHand), backgroundColor: ServoColor.rightArmBackground)
+                }
             }
-            
-            HStack(spacing: 12) {
-                poseLabel("Body", value: String(format: "%.1f°", pose.bodyAngle))
-                poseLabel("Head", value: String(format: "%.1f°", pose.headAngle))
-                poseLabel("Left arm", value: String(format: "%.2f", pose.leftHand))
-                poseLabel("Right arm", value: String(format: "%.2f", pose.rightHand))
-            }
-            
-            Text("Adjust the camera with the sliders; switch ROBOSANTA_RUNTIME to \"physical\" for camera mode.")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            .padding()
         }
-        .padding()
-        .frame(minWidth: 520, minHeight: 520)
+        .frame(minWidth: 600, minHeight: 600)
         .onAppear {
             let snapshot = coordinator.stateMachine.currentPose()
             pose = snapshot
@@ -128,6 +135,7 @@ struct VirtualModeView: View {
         .onReceive(coordinator.poseUpdates.receive(on: RunLoop.main)) { newPose in
             pose = newPose
             renderer.apply(pose: newPose)
+            dataBuffer.addDataPoint(pose: newPose)
         }
         .onReceive(personStatesPublisher.receive(on: RunLoop.main)) { state in
             renderer.applyPerson(state: state.isPresent ? state : nil)
