@@ -53,9 +53,15 @@ struct VirtualModeView: View {
     @ObservedObject var coordinator: RuntimeCoordinator
     @State private var renderer = SantaPreviewRenderer()
     @State private var pose = StateMachine.FigurinePose()
-    @State private var personOffset: Double?
     @State private var zoomScale: Double = 0.5
     @State private var azimuthDegrees: Double = -80
+
+    private var personStatesPublisher: AnyPublisher<PersonState, Never> {
+        if let virtualSource = coordinator.detectionSource as? VirtualDetectionSource {
+            return virtualSource.personStates
+        }
+        return Empty().eraseToAnyPublisher()
+    }
     
     private func poseLabel(_ title: String, value: String) -> some View {
         VStack(spacing: 4) {
@@ -86,6 +92,17 @@ struct VirtualModeView: View {
             }
             VirtualSantaPreview(zoomScale: $zoomScale, azimuthDegrees: $azimuthDegrees, renderer: renderer)
                 .frame(minWidth: 500, minHeight: 420)
+
+            if let previewSource = coordinator.detectionSource as? DetectionPreviewProviding {
+                VStack(spacing: 6) {
+                    Text("Virtual camera feed")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    DetectionPreview(source: previewSource)
+                        .frame(height: 200)
+                        .cornerRadius(12)
+                }
+            }
             
             HStack(spacing: 12) {
                 poseLabel("Body", value: String(format: "%.1f°", pose.bodyAngle))
@@ -112,10 +129,8 @@ struct VirtualModeView: View {
             pose = newPose
             renderer.apply(pose: newPose)
         }
-        .onReceive(coordinator.detectionSource.detectionFrames.receive(on: RunLoop.main)) { frame in
-            let candidate = frame.faces.min { abs($0.relativeOffset) < abs($1.relativeOffset) }
-            personOffset = candidate?.relativeOffset
-            renderer.applyPerson(relativeOffset: candidate?.relativeOffset)
+        .onReceive(personStatesPublisher.receive(on: RunLoop.main)) { state in
+            renderer.applyPerson(state: state.isPresent ? state : nil)
         }
     }
 }

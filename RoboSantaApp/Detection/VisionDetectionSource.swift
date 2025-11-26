@@ -277,3 +277,11 @@ extension VisionDetectionSource: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
     }
 }
+
+// MARK: - Preview provider
+
+extension VisionDetectionSource: DetectionPreviewProviding {
+    func attachPreview(to layer: CALayer) {
+        attach(to: layer)
+    }
+}

@@ -68,10 +68,14 @@ final class BaseSantaRig: SantaRig {
     }
     
     private func startPosePublisher() {
-        poseTimer = Timer.scheduledTimer(withTimeInterval: poseUpdateInterval, repeats: true) { [weak self] _ in
+        // Use an explicit timer + run loop registration so pose updates stay alive in .common modes
+        // (e.g. while UI is interacting) instead of relying on the implicit scheduling behavior.
+        let timer = Timer(timeInterval: poseUpdateInterval, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.poseSubject.send(self.stateMachine.currentPose())
         }
+        poseTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 }
 

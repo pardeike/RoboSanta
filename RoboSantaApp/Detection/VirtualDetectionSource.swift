@@ -9,6 +9,7 @@
 import Foundation
 import Combine
 import CoreGraphics
+import AppKit
 
 /// Configuration for virtual detection simulation.
 struct VirtualDetectionConfig {
@@ -32,6 +33,9 @@ final class VirtualDetectionSource: PersonDetectionSource {
     private var personGenerator: any PersonGenerator
     private let config: VirtualDetectionConfig
     private let detectionSubject = PassthroughSubject<DetectionFrame, Never>()
+    private let personStateSubject = PassthroughSubject<PersonState, Never>()
+    private weak var previewHostLayer: CALayer?
+    private let overlayLayer = CALayer()
     private var timer: Timer?
     private var lastUpdateTime: Date?
     
@@ -42,8 +46,12 @@ final class VirtualDetectionSource: PersonDetectionSource {
     var detectionFrames: AnyPublisher<DetectionFrame, Never> {
         detectionSubject.eraseToAnyPublisher()
     }
+
+    var personStates: AnyPublisher<PersonState, Never> {
+        personStateSubject.eraseToAnyPublisher()
+    }
     
-    var supportsPreview: Bool { false }
+    var supportsPreview: Bool { true }
     
     /// Initialize with a custom person generator.
     /// - Parameters:
@@ -81,6 +89,7 @@ final class VirtualDetectionSource: PersonDetectionSource {
         
         // Update the person generator
         let personState = personGenerator.update(deltaTime: deltaTime)
+        personStateSubject.send(personState)
         
         // Calculate face position in camera frame
         let faces: [DetectedFace]
@@ -131,5 +140,45 @@ final class VirtualDetectionSource: PersonDetectionSource {
         )
         
         detectionSubject.send(frame)
+        renderPreview(for: frame)
+    }
+
+    private func renderPreview(for frame: DetectionFrame) {
+        guard let hostLayer = previewHostLayer else { return }
+        DispatchQueue.main.async {
+            self.overlayLayer.sublayers?.forEach { $0.removeFromSuperlayer() }
+            self.overlayLayer.frame = hostLayer.bounds
+            let width = hostLayer.bounds.width
+            let height = hostLayer.bounds.height
+
+            for face in frame.faces {
+                let rect = CGRect(
+                    x: face.boundingBoxNormalized.minX * width,
+                    y: face.boundingBoxNormalized.minY * height,
+                    width: face.boundingBoxNormalized.width * width,
+                    height: face.boundingBoxNormalized.height * height
+                )
+                let shape = CAShapeLayer()
+                shape.frame = rect
+                shape.path = CGPath(rect: CGRect(origin: .zero, size: rect.size), transform: nil)
+                shape.fillColor = NSColor.white.withAlphaComponent(0.12).cgColor
+                shape.strokeColor = NSColor.white.cgColor
+                shape.lineWidth = 2.0
+                self.overlayLayer.addSublayer(shape)
+            }
+        }
+    }
+}
+
+extension VirtualDetectionSource: DetectionPreviewProviding {
+    func attachPreview(to layer: CALayer) {
+        previewHostLayer = layer
+        DispatchQueue.main.async {
+            layer.sublayers?.forEach { $0.removeFromSuperlayer() }
+            layer.backgroundColor = NSColor.black.cgColor
+            self.overlayLayer.frame = layer.bounds
+            self.overlayLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+            layer.addSublayer(self.overlayLayer)
+        }
     }
 }
