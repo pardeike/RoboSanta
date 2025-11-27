@@ -7,12 +7,14 @@ import Ollama
 
 /// Set to true to keep the legacy 90° portrait camera rotation; landscape is default.
 private let portraitCameraMode = false
+/// Set which version of Santa you want to run: physical or virtual
+private let runtime = SantaRuntime.physical
 
 /// The runtime coordinator for Santa figurine control.
 /// This replaces the global `santa` StateMachine with a higher-level abstraction.
 @MainActor
 let coordinator = RuntimeCoordinator(
-    runtime: .virtual,
+    runtime: runtime,
     settings: StateMachine.Settings.default.withCameraHorizontalFOV(
         portraitCameraMode ? 60 : 90
     )
