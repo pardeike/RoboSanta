@@ -66,6 +66,18 @@ final class VirtualServoDriver: ServoDriver {
     }
     
     func shutdown() {
+        // Dispatch to main thread for consistent state access.
+        // The timer is scheduled on main thread, so invalidating it there is correct.
+        if Thread.isMainThread {
+            performShutdown()
+        } else {
+            DispatchQueue.main.sync {
+                performShutdown()
+            }
+        }
+    }
+    
+    private func performShutdown() {
         simulationTimer?.invalidate()
         simulationTimer = nil
         logTelemetry("servo.detach", values: ["channel": configuration.channel])
@@ -73,6 +85,21 @@ final class VirtualServoDriver: ServoDriver {
     
     func move(toLogical value: Double) {
         let clampedValue = configuration.logicalRange.clamp(value)
+        // Dispatch to main thread to ensure thread-safe access to servo state.
+        // The state machine calls this from its workerQueue, but the simulation
+        // timer runs on the main thread. Without synchronization, targetPosition
+        // updates might not be visible to the simulation loop due to CPU caching,
+        // causing the servo to appear "stuck" at its previous position.
+        if Thread.isMainThread {
+            applyMove(clampedValue)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.applyMove(clampedValue)
+            }
+        }
+    }
+    
+    private func applyMove(_ clampedValue: Double) {
         // If direction is changing while in motion, reset velocity to simulate real servo
         // behavior where the motor must stop before reversing.
         // Only check when servo is actually moving (currentVelocity > 0) to avoid
@@ -90,6 +117,18 @@ final class VirtualServoDriver: ServoDriver {
     }
     
     func setVelocity(_ velocity: Double) {
+        // Dispatch to main thread to ensure thread-safe access to servo state.
+        // See move(toLogical:) for rationale.
+        if Thread.isMainThread {
+            applyVelocity(velocity)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.applyVelocity(velocity)
+            }
+        }
+    }
+    
+    private func applyVelocity(_ velocity: Double) {
         self.velocity = velocity
         logTelemetry("servo.velocitySet", values: ["velocity": velocity])
     }
