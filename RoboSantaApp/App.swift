@@ -4,6 +4,8 @@ import SwiftUI
 private let portraitCameraMode = false
 /// Set which version of Santa you want to run: physical or virtual
 private let runtime = SantaRuntime.physical
+/// Set to true to use the new queue-based interaction system
+private let useInteractiveMode = true
 
 /// The runtime coordinator for Santa figurine control.
 /// This replaces the global `santa` StateMachine with a higher-level abstraction.
@@ -15,8 +17,26 @@ let coordinator = RuntimeCoordinator(
     )
 )
 
+/// Speech queue configuration and manager (used in interactive mode)
 @MainActor
-let speaker = SantaSpeaker()
+let speechQueueConfig = SpeechQueueConfiguration.default
+
+@MainActor
+let speechQueueManager = SpeechQueueManager(config: speechQueueConfig)
+
+/// Audio player for interactive mode
+@MainActor
+let audioPlayer = AudioPlayer()
+
+/// SantaSpeaker - uses queue-based generation in interactive mode
+@MainActor
+let speaker = useInteractiveMode
+    ? SantaSpeaker(queueManager: speechQueueManager, queueConfig: speechQueueConfig)
+    : SantaSpeaker()
+
+/// Interaction coordinator (only used in interactive mode)
+@MainActor
+var interactionCoordinator: InteractionCoordinator?
 
 @main
 struct MinimalApp: App {
@@ -38,9 +58,30 @@ struct MinimalApp: App {
                     source.portraitModeEnabled = portraitCameraMode
                 }
                 do {
-                    speaker.start()
+                    // Start the coordinator first
                     try await coordinator.start()
                     print("🎅 RoboSanta started in \(coordinator.currentRuntime) mode")
+                    
+                    if useInteractiveMode {
+                        // Interactive mode: use queue-based generation and InteractionCoordinator
+                        print("🎄 Starting interactive mode with queue-based speech")
+                        
+                        // Create and start the interaction coordinator
+                        interactionCoordinator = InteractionCoordinator(
+                            stateMachine: coordinator.stateMachine,
+                            audioPlayer: audioPlayer,
+                            queueManager: speechQueueManager,
+                            config: .default
+                        )
+                        interactionCoordinator?.start()
+                        
+                        // Start background speech generation
+                        speaker.start()
+                    } else {
+                        // Legacy mode: direct playback
+                        print("🎅 Starting legacy mode with direct playback")
+                        speaker.startLegacy()
+                    }
                 } catch {
                     print("Failed to start coordinator: \(error)")
                 }

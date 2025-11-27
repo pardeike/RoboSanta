@@ -413,6 +413,12 @@ extension StateMachine.IdleBehavior {
     static var defaultPatrolBehavior: StateMachine.IdleBehavior {
         .patrol(.defaultPatrolConfiguration)
     }
+    
+    /// Minimal idle behaviour: subtle head sway with stationary body.
+    /// Used when the speech queue is empty.
+    static var defaultMinimalIdleBehavior: StateMachine.IdleBehavior {
+        .minimalIdle(.default)
+    }
 }
 
 extension StateMachine.FigurineConfiguration {
