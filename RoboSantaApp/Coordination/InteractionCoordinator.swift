@@ -89,6 +89,11 @@ final class InteractionCoordinator {
         // Initial queue scan
         updateQueueState()
         
+        // Sync StateMachine idle behavior with current queue state
+        // This ensures we start in minimal idle mode when queue is empty,
+        // rather than defaulting to patrol mode
+        updateIdleBehavior()
+        
         // Start the main coordination loop
         loopTask = Task { await runCoordinationLoop() }
     }
