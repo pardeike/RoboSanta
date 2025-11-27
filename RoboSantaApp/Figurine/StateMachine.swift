@@ -658,6 +658,12 @@ final class StateMachine {
         headStall.frozenEdge = nil
         bodyStall.frozenTarget = nil
         bodyStall.frozenEdge = nil
+        // Clear lastTarget so the next command will reset timestamps.
+        // Without this, the stall guard could immediately re-freeze if the new
+        // target (after rate limiting) is within minMovement of the old target,
+        // because timestamps wouldn't update and holdDuration would already have passed.
+        headStall.lastTarget = nil
+        bodyStall.lastTarget = nil
         // Reset movement timestamps to prevent immediate re-freeze
         // Keep lastMeasurement/lastMeasurementAt as they reflect actual servo position
         headStall.lastMovementAt = now
@@ -817,20 +823,18 @@ final class StateMachine {
         now: Date,
         label: String
     ) -> Double {
-        if let frozen = state.frozenTarget {
-            if let edge = state.frozenEdge {
-                let movingInward: Bool
-                switch edge {
-                case .lower:
-                    movingInward = proposed > frozen
-                case .upper:
-                    movingInward = proposed < frozen
-                }
-                // Thaw as soon as we ask to move back toward center; otherwise stay frozen.
-                if !movingInward { return frozen }
-            } else if abs(proposed - frozen) <= config.tolerance {
-                return frozen
+        // Check if currently frozen at an edge
+        if let frozen = state.frozenTarget, let edge = state.frozenEdge {
+            let movingInward: Bool
+            switch edge {
+            case .lower:
+                movingInward = proposed > frozen
+            case .upper:
+                movingInward = proposed < frozen
             }
+            // Thaw as soon as we ask to move back toward center; otherwise stay frozen.
+            if !movingInward { return frozen }
+            // Thawing - clear frozen state
             state.frozenTarget = nil
             state.frozenEdge = nil
         }
@@ -853,19 +857,25 @@ final class StateMachine {
         guard now.timeIntervalSince(stableSince) >= config.holdDuration else { return proposed }
         guard abs(measurement - proposed) <= config.tolerance else { return proposed }
 
+        // Only freeze if at an edge - the stall guard is meant to prevent
+        // the servo from fighting against mechanical limits, not to freeze
+        // it at arbitrary positions in the middle of its range.
         var settled = measurement
-        var backedOff = false
         var settledEdge: ServoStallState.Edge?
-        if config.backoff > 0 {
-            if measurement - logicalRange.lowerBound <= config.tolerance {
+        
+        if measurement - logicalRange.lowerBound <= config.tolerance {
+            settledEdge = .lower
+            if config.backoff > 0 {
                 settled = (logicalRange.lowerBound + config.backoff).clamped(to: logicalRange)
-                backedOff = true
-                settledEdge = .lower
-            } else if logicalRange.upperBound - measurement <= config.tolerance {
-                settled = (logicalRange.upperBound - config.backoff).clamped(to: logicalRange)
-                backedOff = true
-                settledEdge = .upper
             }
+        } else if logicalRange.upperBound - measurement <= config.tolerance {
+            settledEdge = .upper
+            if config.backoff > 0 {
+                settled = (logicalRange.upperBound - config.backoff).clamped(to: logicalRange)
+            }
+        } else {
+            // Not at an edge - don't freeze
+            return proposed
         }
 
         state.frozenTarget = settled
@@ -876,13 +886,12 @@ final class StateMachine {
             "target": proposed,
             "settled": settled
         ])
-        if backedOff {
-            logState("servo.backoff", values: [
-                "servo": label,
-                "meas": measurement,
-                "settled": settled
-            ])
-        }
+        logState("servo.edgeFreeze", values: [
+            "servo": label,
+            "meas": measurement,
+            "settled": settled,
+            "edge": settledEdge == .lower ? "lower" : "upper"
+        ])
         return settled
     }
 
