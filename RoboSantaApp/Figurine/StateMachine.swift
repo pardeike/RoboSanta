@@ -683,10 +683,8 @@ final class StateMachine {
         behavior.patrolState.transitionStart = now
         behavior.patrolState.transitionEnd = now
         
-        // Use a short pause when resuming from tracking (1-2 seconds)
-        // instead of the normal interval range which may be longer
-        let resumePauseDuration: TimeInterval = min(2.0, config.intervalRange.lowerBound)
-        behavior.patrolState.nextSwitch = now + resumePauseDuration
+        // Use configured pause duration when resuming from tracking
+        behavior.patrolState.nextSwitch = now + settings.patrolResumePauseDuration
         
         // Decide next direction based on current position relative to patrol center
         let center = (behavior.patrolState.lowerHeading + behavior.patrolState.upperHeading) / 2
