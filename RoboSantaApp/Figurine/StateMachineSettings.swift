@@ -125,6 +125,11 @@ extension StateMachine {
         /// Typical: 0.01...0.05.
         let leftHandPositionTolerance: Double
 
+        /// Pause duration (s) when resuming patrol after tracking ends.
+        /// Lower = quicker return to scanning; higher = holds final tracking position longer.
+        /// Typical: 0.5...3.0 s.
+        let patrolResumePauseDuration: TimeInterval
+
         /// Complete figurine configuration (servos, idle/tracking behaviour, timeouts).
         /// Tweak this when adjusting mechanical ranges, idle patterns, or tracking posture.
         let figurineConfiguration: FigurineConfiguration
@@ -155,6 +160,7 @@ extension StateMachine {
             leftHandMaxRaisedDuration: 6.0,
             minimumLeftHandCooldown: 4.0, // TODO revert back to 20.0,
             leftHandPositionTolerance: 0.03,
+            patrolResumePauseDuration: 1.5,
             figurineConfiguration: .init(
                 leftHand: .defaultLeftHand,
                 rightHand: .defaultRightHand,
@@ -196,6 +202,7 @@ extension StateMachine {
                 leftHandMaxRaisedDuration: leftHandMaxRaisedDuration,
                 minimumLeftHandCooldown: minimumLeftHandCooldown,
                 leftHandPositionTolerance: leftHandPositionTolerance,
+                patrolResumePauseDuration: patrolResumePauseDuration,
                 figurineConfiguration: configuration
             )
         }
