@@ -56,6 +56,7 @@ struct VirtualModeView: View {
     @State private var zoomScale: Double = 0.5
     @State private var azimuthDegrees: Double = -80
     @State private var isPersonHidden: Bool = false
+    private let manualNudgeFallbackStep: Double = 0.25
     @StateObject private var dataBuffer = ServoDataBuffer(maxPoints: 200)
 
     private var personStatesPublisher: AnyPublisher<PersonState, Never> {
@@ -87,12 +88,20 @@ struct VirtualModeView: View {
         )
     }
     
-    private func togglePersonHidden() {
-        isPersonHidden.toggle()
-        renderer.setPersonDimmed(isPersonHidden)
-        if let virtualSource = coordinator.detectionSource as? VirtualDetectionSource {
-            virtualSource.forcePersonHidden = isPersonHidden
-        }
+    private func togglePersonHidden() -> Bool {
+        guard let virtualSource = coordinator.detectionSource as? VirtualDetectionSource else { return false }
+        let hidden = virtualSource.togglePersonHidden()
+        isPersonHidden = hidden
+        renderer.setPersonDimmed(hidden)
+        return true
+    }
+    
+    private func nudgeManualPerson(direction: Double) -> Bool {
+        guard let virtualSource = coordinator.detectionSource as? VirtualDetectionSource,
+              virtualSource.supportsManualControl else { return false }
+        let step = virtualSource.manualControlStep ?? manualNudgeFallbackStep
+        virtualSource.nudgePerson(by: direction * step)
+        return true
     }
     
     var body: some View {
@@ -137,6 +146,10 @@ struct VirtualModeView: View {
             let snapshot = coordinator.stateMachine.currentPose()
             pose = snapshot
             renderer.apply(pose: snapshot)
+            if let virtualSource = coordinator.detectionSource as? VirtualDetectionSource {
+                isPersonHidden = virtualSource.personHidden
+                renderer.setPersonDimmed(isPersonHidden)
+            }
             updateCamera()
         }
         .onChange(of: zoomScale) { _, _ in updateCamera() }
@@ -150,8 +163,16 @@ struct VirtualModeView: View {
             renderer.applyPerson(state: state.isPresent ? state : nil)
         }
         .onKeyPress(.space) {
-            togglePersonHidden()
-            return .handled
+            if togglePersonHidden() { return .handled }
+            return .ignored
+        }
+        .onKeyPress(.leftArrow) {
+            if nudgeManualPerson(direction: -1) { return .handled }
+            return .ignored
+        }
+        .onKeyPress(.rightArrow) {
+            if nudgeManualPerson(direction: 1) { return .handled }
+            return .ignored
         }
     }
 }

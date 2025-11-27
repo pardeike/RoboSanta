@@ -455,6 +455,14 @@ final class StateMachine {
                     resetLeftHandAutopilot()
                 }
                 behavior.facesVisible = false
+                // Shorten the first patrol pause after losing a person so we resume sweeping quickly.
+                if case .patrol = behavior.idleBehavior {
+                    if !behavior.patrolState.hasExtremes {
+                        configureInitialPatrolState(now: now)
+                    }
+                    let shortDelay = randomInterval(in: settings.postLossPatrolIntervalRange)
+                    behavior.patrolState.nextSwitch = now + shortDelay
+                }
                 logEvent("tracking.lost")
                 logState("tracking.lost")
             }
@@ -811,14 +819,15 @@ final class StateMachine {
     ) -> Double {
         if let frozen = state.frozenTarget {
             if let edge = state.frozenEdge {
-                let releasing: Bool
+                let movingInward: Bool
                 switch edge {
                 case .lower:
-                    releasing = proposed > frozen + config.tolerance
+                    movingInward = proposed > frozen
                 case .upper:
-                    releasing = proposed < frozen - config.tolerance
+                    movingInward = proposed < frozen
                 }
-                if !releasing { return frozen }
+                // Thaw as soon as we ask to move back toward center; otherwise stay frozen.
+                if !movingInward { return frozen }
             } else if abs(proposed - frozen) <= config.tolerance {
                 return frozen
             }

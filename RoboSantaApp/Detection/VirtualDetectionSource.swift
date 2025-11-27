@@ -44,8 +44,7 @@ final class VirtualDetectionSource: PersonDetectionSource {
     var cameraHeadingDegrees: Double = 0
     
     /// When true, forces the person to be hidden regardless of generator state.
-    /// This allows manual control over person visibility for testing.
-    var forcePersonHidden: Bool = false
+    private var isPersonHidden: Bool = false
     
     var detectionFrames: AnyPublisher<DetectionFrame, Never> {
         detectionSubject.eraseToAnyPublisher()
@@ -67,6 +66,38 @@ final class VirtualDetectionSource: PersonDetectionSource {
     ) {
         self.personGenerator = generator
         self.config = config
+    }
+
+    /// Current hidden state for the simulated person.
+    var personHidden: Bool { isPersonHidden }
+
+    /// Toggle whether the simulated person should be hidden.
+    /// - Returns: The new hidden state after toggling.
+    func togglePersonHidden() -> Bool {
+        isPersonHidden.toggle()
+        return isPersonHidden
+    }
+
+    /// Explicitly set whether the simulated person should be hidden.
+    func setPersonHidden(_ hidden: Bool) {
+        isPersonHidden = hidden
+    }
+
+    /// Whether the current generator supports manual left/right adjustments.
+    var supportsManualControl: Bool {
+        personGenerator is ManualPersonGenerator
+    }
+
+    /// The recommended manual nudge step, if supported.
+    var manualControlStep: Double? {
+        (personGenerator as? ManualPersonGenerator)?.nudgeStep
+    }
+
+    /// Nudge the manual person left/right.
+    func nudgePerson(by delta: Double) {
+        guard var manual = personGenerator as? ManualPersonGenerator else { return }
+        manual.nudge(by: delta)
+        personGenerator = manual
     }
     
     func start() {
@@ -96,9 +127,10 @@ final class VirtualDetectionSource: PersonDetectionSource {
         personStateSubject.send(personState)
         
         // Calculate face position in camera frame
-        // If forcePersonHidden is true, we don't detect any faces (but person still moves in 3D view)
+        // If isPersonHidden is true, we don't detect any faces, but we still publish the person state
+        // so the preview can show a dimmed ghost.
         let faces: [DetectedFace]
-        if personState.isPresent && !forcePersonHidden {
+        if personState.isPresent && !isPersonHidden {
             // Calculate the angle from figurine to person in world space
             let angleToPersonDeg = atan2(personState.horizontalPosition, personState.distance) * 180.0 / .pi
             

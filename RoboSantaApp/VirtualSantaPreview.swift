@@ -30,7 +30,7 @@ final class SantaPreviewRenderer {
         return mat
     }()
     /// Opacity when person is "hidden" but still slightly visible
-    private let hiddenPersonOpacity: CGFloat = 0.15
+    private let hiddenPersonOpacity: CGFloat = 0.3
     /// Normal opacity for person
     private let normalPersonOpacity: CGFloat = 0.8
     private var headCenterHeight: Float = 1.0
