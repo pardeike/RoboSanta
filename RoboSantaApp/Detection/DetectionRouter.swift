@@ -42,7 +42,7 @@ final class DetectionRouter {
         if let candidate = frame.faces.min(by: { abs($0.relativeOffset) < abs($1.relativeOffset) }) {
             hasActiveFace = true
             lastFaceTimestamp = Date()
-            stateMachine.send(.personDetected(relativeOffset: candidate.relativeOffset))
+            stateMachine.send(.personDetected(relativeOffset: candidate.relativeOffset, faceYaw: candidate.yawDeg))
         } else {
             guard hasActiveFace else { return }
             if let last = lastFaceTimestamp, Date().timeIntervalSince(last) < lostThreshold { return }
