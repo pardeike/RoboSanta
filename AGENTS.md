@@ -15,6 +15,17 @@ An interactive Santa Claus animatronic figurine for office corridors that:
 
 **Key Goal**: Entertain people walking by with engaging, AI-generated interactions in Swedish.
 
+## 📋 Active Development Plans
+
+**IMPLEMENTATION.md** - Current major refactoring project to integrate SantaSpeaker with StateMachine for coordinated interactive conversations. See this document for:
+- Detailed architecture design
+- Work breakdown into discrete units
+- Filesystem-based conversation queue system
+- Coordination between speech generation and animatronics
+- Implementation timeline and testing strategy
+
+If you're working on speech integration, person detection enhancement, or interaction coordination, consult IMPLEMENTATION.md first.
+
 ## 🏗️ Architecture Understanding
 
 ### Component Hierarchy
