@@ -62,7 +62,7 @@ final class InteractionCoordinator {
         stateMachine: StateMachine,
         audioPlayer: AudioPlayer,
         queueManager: SpeechQueueManager,
-        config: InteractionConfiguration = .default
+        config: InteractionConfiguration
     ) {
         self.stateMachine = stateMachine
         self.audioPlayer = audioPlayer
@@ -72,7 +72,7 @@ final class InteractionCoordinator {
         setupSubscriptions()
     }
     
-    deinit {
+    isolated deinit {
         loopTask?.cancel()
     }
     
