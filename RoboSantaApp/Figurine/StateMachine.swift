@@ -628,7 +628,7 @@ final class StateMachine {
         ])
         if previousContext != context {
             // Clear frozen stall states when context changes to allow smooth transitions
-            clearFrozenStallStates()
+            clearFrozenStallStates(now: now)
             // When returning to search mode, sync patrol to start from current position
             if context == .search && previousContext == .tracking {
                 syncPatrolFromCurrentHeading(now: now)
@@ -644,7 +644,7 @@ final class StateMachine {
     /// Clears the frozen target states for head and body servos.
     /// Called when the orientation context changes to allow free movement.
     /// Also resets timing state to prevent immediate re-freeze.
-    private func clearFrozenStallStates() {
+    private func clearFrozenStallStates(now: Date) {
         // Clear frozen targets and edges
         headStall.frozenTarget = nil
         headStall.frozenEdge = nil
@@ -652,7 +652,6 @@ final class StateMachine {
         bodyStall.frozenEdge = nil
         // Reset movement timestamps to prevent immediate re-freeze
         // Keep lastMeasurement/lastMeasurementAt as they reflect actual servo position
-        let now = Date()
         headStall.lastMovementAt = now
         headStall.lastCommandAt = now
         bodyStall.lastMovementAt = now
