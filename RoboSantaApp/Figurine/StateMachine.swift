@@ -627,12 +627,76 @@ final class StateMachine {
             "heading": limitedHeading
         ])
         if previousContext != context {
+            // Clear frozen stall states when context changes to allow smooth transitions
+            clearFrozenStallStates()
+            // When returning to search mode, sync patrol to start from current position
+            if context == .search && previousContext == .tracking {
+                syncPatrolFromCurrentHeading(now: now)
+            }
             switch context {
             case .tracking: logState("mode.tracking")
             case .search:   logState("mode.search")
             case .manual:   logState("mode.manual")
             }
         }
+    }
+    
+    /// Clears the frozen target states for head and body servos.
+    /// Called when the orientation context changes to allow free movement.
+    /// Also resets timing state to prevent immediate re-freeze.
+    private func clearFrozenStallStates() {
+        // Clear frozen targets and edges
+        headStall.frozenTarget = nil
+        headStall.frozenEdge = nil
+        bodyStall.frozenTarget = nil
+        bodyStall.frozenEdge = nil
+        // Reset movement timestamps to prevent immediate re-freeze
+        // Keep lastMeasurement/lastMeasurementAt as they reflect actual servo position
+        let now = Date()
+        headStall.lastMovementAt = now
+        headStall.lastCommandAt = now
+        bodyStall.lastMovementAt = now
+        bodyStall.lastCommandAt = now
+        logEvent("stall.cleared", values: ["reason": "context_change"])
+    }
+    
+    /// Syncs patrol state to continue from the current camera heading.
+    /// Called when transitioning from tracking to search to avoid jumps.
+    private func syncPatrolFromCurrentHeading(now: Date) {
+        guard case .patrol(let config) = behavior.idleBehavior else { return }
+        
+        // Get current camera heading as the starting point
+        let currentHeading = cameraHeadingEstimateLocked()
+        
+        // Ensure patrol extremes are set
+        if !behavior.patrolState.hasExtremes {
+            guard let extremes = resolvedPatrolExtremes(for: config) else { return }
+            behavior.patrolState.hasExtremes = true
+            behavior.patrolState.lowerHeading = extremes.lower
+            behavior.patrolState.upperHeading = extremes.upper
+        }
+        
+        // Update patrol state to start from current position
+        behavior.patrolState.currentHeading = currentHeading
+        behavior.patrolState.startHeading = currentHeading
+        behavior.patrolState.targetHeading = currentHeading
+        behavior.patrolState.transitionStart = now
+        behavior.patrolState.transitionEnd = now
+        
+        // Use a short pause when resuming from tracking (1-2 seconds)
+        // instead of the normal interval range which may be longer
+        let resumePauseDuration: TimeInterval = min(2.0, config.intervalRange.lowerBound)
+        behavior.patrolState.nextSwitch = now + resumePauseDuration
+        
+        // Decide next direction based on current position relative to patrol center
+        let center = (behavior.patrolState.lowerHeading + behavior.patrolState.upperHeading) / 2
+        behavior.patrolState.nextTargetIsUpper = currentHeading < center
+        
+        logEvent("patrol.sync", values: [
+            "from": currentHeading,
+            "nextSwitch": behavior.patrolState.nextSwitch.timeIntervalSince1970
+        ])
+        logState("patrol.resumed", values: ["heading": currentHeading])
     }
     
     private func updateHeadAndBodyTargets(now: Date, deltaTime: TimeInterval) {
