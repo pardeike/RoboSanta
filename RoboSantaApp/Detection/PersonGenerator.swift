@@ -37,6 +37,68 @@ protocol PersonGenerator {
     mutating func reset()
 }
 
+// MARK: - Manual Person Generator
+
+/// Configuration for the manual person generator.
+struct ManualPersonConfig {
+    /// Minimum horizontal position in meters (positive = right)
+    var minPosition: Double = -3.0
+    /// Maximum horizontal position in meters (positive = right)
+    var maxPosition: Double = 3.0
+    /// Fixed distance from the figurine in meters
+    var distance: Double = 2.0
+    /// Step size (meters) for each manual nudge
+    var step: Double = 0.25
+    /// Starting horizontal position in meters
+    var startPosition: Double = 0.0
+    
+    static let `default` = ManualPersonConfig()
+}
+
+/// A person generator that exposes direct manual control.
+/// External callers can adjust the horizontal position by nudging left/right.
+struct ManualPersonGenerator: PersonGenerator {
+    private let config: ManualPersonConfig
+    private var position: Double
+    private var isPresent: Bool = true
+    
+    init(config: ManualPersonConfig = .default) {
+        self.config = config
+        self.position = config.startPosition.clamped(to: config.minPosition...config.maxPosition)
+    }
+    
+    mutating func update(deltaTime: TimeInterval) -> PersonState {
+        PersonState(
+            isPresent: isPresent,
+            horizontalPosition: position,
+            distance: config.distance,
+            facingAngle: nil
+        )
+    }
+    
+    mutating func reset() {
+        position = config.startPosition.clamped(to: config.minPosition...config.maxPosition)
+        isPresent = true
+    }
+    
+    /// Nudge the manual person horizontally, respecting configured bounds.
+    mutating func nudge(by delta: Double) {
+        position = (position + delta).clamped(to: config.minPosition...config.maxPosition)
+    }
+    
+    mutating func setPresent(_ present: Bool) {
+        isPresent = present
+    }
+    
+    /// Range for allowable manual positioning.
+    var positionRange: ClosedRange<Double> {
+        config.minPosition...config.maxPosition
+    }
+    
+    /// Suggested step size for UI controls.
+    var nudgeStep: Double { config.step }
+}
+
 // MARK: - Oscillating Person Generator
 
 /// Configuration for the oscillating person generator.

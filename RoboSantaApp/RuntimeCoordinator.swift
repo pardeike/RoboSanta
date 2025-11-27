@@ -132,7 +132,7 @@ final class RuntimeCoordinator: ObservableObject {
         case .physical:
             return (PhysicalRig(settings: settings), VisionDetectionSource())
         case .virtual:
-            let generator = personGenerator ?? OscillatingPersonGenerator()
+            let generator = personGenerator ?? ManualPersonGenerator()
             let detectionConfig = VirtualDetectionConfig(
                 cameraHorizontalFOV: settings.figurineConfiguration.trackingBehavior.cameraHorizontalFOV
             )

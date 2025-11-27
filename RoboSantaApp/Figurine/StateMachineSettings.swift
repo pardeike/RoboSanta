@@ -41,6 +41,11 @@ extension StateMachine {
         /// Lower = allows nearly identical extremes (little motion); higher = collapses near-duplicates.
         /// Typical: 0.0005...0.01 deg.
         let patrolHeadingDedupEpsilon: Double
+        
+        /// Pause (s) before resuming patrol after losing a person.
+        /// Lower = snaps back to patrol quickly; higher = lingers in the last tracked heading.
+        /// Typical: 0.5...3 s.
+        let postLossPatrolIntervalRange: ClosedRange<TimeInterval>
 
         /// Maximum time horizon (s) used to lead the target heading.
         /// Lower = trusts measurement, less prediction; higher = more anticipation but risk of overshoot.
@@ -143,6 +148,7 @@ extension StateMachine {
             offsetLPFAlpha: 0.5,
             maxJumpDeg: 30.0,
             patrolHeadingDedupEpsilon: 0.001,
+            postLossPatrolIntervalRange: 1.0...2.0,
             leadSecondsMax: 0.08,
             leadDegCap: 2.5,
             predictionBlendBase: 0.35,
@@ -185,6 +191,7 @@ extension StateMachine {
                 offsetLPFAlpha: offsetLPFAlpha,
                 maxJumpDeg: maxJumpDeg,
                 patrolHeadingDedupEpsilon: patrolHeadingDedupEpsilon,
+                postLossPatrolIntervalRange: postLossPatrolIntervalRange,
                 leadSecondsMax: leadSecondsMax,
                 leadDegCap: leadDegCap,
                 predictionBlendBase: predictionBlendBase,
