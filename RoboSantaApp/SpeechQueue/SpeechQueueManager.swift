@@ -27,13 +27,15 @@ enum SpeechQueueError: Error, LocalizedError {
 
 /// Manages the filesystem-based queue of conversation sets.
 /// Responsible for scanning, consuming, and moving conversation sets.
+/// Thread-safe for use from multiple actors/queues.
 @Observable
-final class SpeechQueueManager: @unchecked Sendable {
+final class SpeechQueueManager {
     
     /// Configuration for the queue
     let config: SpeechQueueConfiguration
     
     /// Currently available conversation sets (sorted oldest first)
+    /// Note: Access is synchronized via the lock
     private(set) var availableSets: [ConversationSet] = []
     
     /// The set currently being consumed (marked as in-progress)
@@ -43,19 +45,36 @@ final class SpeechQueueManager: @unchecked Sendable {
     private(set) var isScanning = false
     
     /// Number of available sets
-    var queueCount: Int { availableSets.count }
+    var queueCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return availableSets.count
+    }
     
     /// Whether the queue has content available
-    var hasContent: Bool { !availableSets.isEmpty }
+    var hasContent: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !availableSets.isEmpty
+    }
     
     /// Whether generation should be paused (queue is at max capacity)
-    var shouldPauseGeneration: Bool { queueCount >= config.maxQueueSize }
+    var shouldPauseGeneration: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return availableSets.count >= config.maxQueueSize
+    }
     
     /// Whether generation should resume (queue is below minimum)
-    var shouldResumeGeneration: Bool { queueCount < config.minQueueSize }
+    var shouldResumeGeneration: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return availableSets.count < config.minQueueSize
+    }
     
     private let fileManager = FileManager.default
     private let operationQueue = DispatchQueue(label: "SpeechQueueManager.operations", qos: .utility)
+    private let lock = NSLock()
     
     /// Creates a new queue manager with the specified configuration.
     /// - Parameter config: Queue configuration
@@ -82,8 +101,15 @@ final class SpeechQueueManager: @unchecked Sendable {
     /// - Returns: Array of available conversation sets
     @discardableResult
     func scanQueue() -> [ConversationSet] {
+        lock.lock()
         isScanning = true
-        defer { isScanning = false }
+        lock.unlock()
+        
+        defer {
+            lock.lock()
+            isScanning = false
+            lock.unlock()
+        }
         
         do {
             let contents = try fileManager.contentsOfDirectory(
@@ -109,7 +135,10 @@ final class SpeechQueueManager: @unchecked Sendable {
             
             // Sort by creation time (oldest first)
             sets.sort()
+            
+            lock.lock()
             availableSets = sets
+            lock.unlock()
             
             return sets
         } catch {
@@ -126,9 +155,12 @@ final class SpeechQueueManager: @unchecked Sendable {
     func consumeOldest() -> ConversationSet? {
         scanQueue()
         
+        lock.lock()
         guard let oldest = availableSets.first else {
+            lock.unlock()
             return nil
         }
+        lock.unlock()
         
         // Mark as in-progress by renaming
         let inProgressURL = oldest.folderURL.appendingPathExtension("inprogress")
@@ -150,10 +182,13 @@ final class SpeechQueueManager: @unchecked Sendable {
                 createdAt: oldest.createdAt
             )
             
+            lock.lock()
             currentSet = inProgressSet
-            
             // Remove from available sets
-            availableSets.removeFirst()
+            if !availableSets.isEmpty {
+                availableSets.removeFirst()
+            }
+            lock.unlock()
             
             return inProgressSet
         } catch {
@@ -166,6 +201,8 @@ final class SpeechQueueManager: @unchecked Sendable {
     /// - Returns: The oldest conversation set, or nil if queue is empty
     func peekOldest() -> ConversationSet? {
         scanQueue()
+        lock.lock()
+        defer { lock.unlock() }
         return availableSets.first
     }
     
@@ -187,9 +224,11 @@ final class SpeechQueueManager: @unchecked Sendable {
             
             try fileManager.moveItem(at: sourceURL, to: destinationURL)
             
+            lock.lock()
             if currentSet?.id == set.id {
                 currentSet = nil
             }
+            lock.unlock()
             
             // Prune old completed sets
             pruneCompletedSets()
@@ -205,9 +244,11 @@ final class SpeechQueueManager: @unchecked Sendable {
         do {
             try fileManager.removeItem(at: set.folderURL)
             
+            lock.lock()
             if currentSet?.id == set.id {
                 currentSet = nil
             }
+            lock.unlock()
         } catch {
             print("⚠️ SpeechQueueManager: Failed to discard set: \(error)")
         }
@@ -216,14 +257,21 @@ final class SpeechQueueManager: @unchecked Sendable {
     /// Releases the current set back to the queue (undo consume).
     /// - Parameter set: The conversation set to release
     func releaseCurrentSet(_ set: ConversationSet) {
-        guard set.id == currentSet?.id else { return }
+        lock.lock()
+        guard set.id == currentSet?.id else {
+            lock.unlock()
+            return
+        }
+        lock.unlock()
         
         // Remove .inprogress extension
         let originalURL = config.queueDirectory.appendingPathComponent(set.id)
         
         do {
             try fileManager.moveItem(at: set.folderURL, to: originalURL)
+            lock.lock()
             currentSet = nil
+            lock.unlock()
             scanQueue()
         } catch {
             print("⚠️ SpeechQueueManager: Failed to release set: \(error)")

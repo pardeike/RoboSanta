@@ -192,7 +192,7 @@ final class InteractionCoordinator {
     private func runCoordinationLoop() async {
         while !Task.isCancelled {
             await coordinationTick()
-            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            try? await Task.sleep(nanoseconds: 250_000_000) // 250ms - sufficient for state changes
         }
     }
     

@@ -37,7 +37,7 @@ final class AudioPlayer: NSObject {
     }
     
     private var audioPlayer: AVAudioPlayer?
-    private var playbackContinuation: CheckedContinuation<Bool, Never>?
+    private var playbackContinuations: [CheckedContinuation<Bool, Never>] = []
     private var currentURL: URL?
     
     // MARK: - Playback Control
@@ -73,7 +73,7 @@ final class AudioPlayer: NSObject {
             
             // Wait for completion
             return await withCheckedContinuation { continuation in
-                self.playbackContinuation = continuation
+                self.playbackContinuations.append(continuation)
             }
         } catch {
             state = .error(error.localizedDescription)
@@ -95,9 +95,8 @@ final class AudioPlayer: NSObject {
         state = .interrupted
         stopInternal()
         
-        // Resume continuation with failure
-        playbackContinuation?.resume(returning: false)
-        playbackContinuation = nil
+        // Resume all waiting continuations with failure
+        resumeAllContinuations(with: false)
     }
     
     /// Waits for current playback to complete.
@@ -108,12 +107,7 @@ final class AudioPlayer: NSObject {
         }
         
         return await withCheckedContinuation { continuation in
-            if self.playbackContinuation != nil {
-                // Already waiting, just return current state
-                continuation.resume(returning: false)
-            } else {
-                self.playbackContinuation = continuation
-            }
+            self.playbackContinuations.append(continuation)
         }
     }
     
@@ -131,6 +125,14 @@ final class AudioPlayer: NSObject {
         audioPlayer = nil
     }
     
+    private func resumeAllContinuations(with result: Bool) {
+        let continuations = playbackContinuations
+        playbackContinuations.removeAll()
+        for continuation in continuations {
+            continuation.resume(returning: result)
+        }
+    }
+    
     private func handlePlaybackFinished(successfully: Bool) {
         if successfully {
             state = .completed
@@ -142,8 +144,7 @@ final class AudioPlayer: NSObject {
         audioPlayer = nil
         currentURL = nil
         
-        playbackContinuation?.resume(returning: successfully)
-        playbackContinuation = nil
+        resumeAllContinuations(with: successfully)
     }
 }
 
