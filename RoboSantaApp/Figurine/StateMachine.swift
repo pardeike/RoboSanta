@@ -2,6 +2,7 @@
 
 import Foundation
 import Dispatch
+import Combine
 
 /// Drives the physical figurine by coordinating the four Phidget RC servos.
 /// Feed it `Event`s from the outside world to influence Santa's pose.
@@ -15,8 +16,23 @@ final class StateMachine {
         case setLeftHand(LeftHandGesture)
         case setRightHand(RightHandGesture)
         case setIdleBehavior(IdleBehavior)
-        case personDetected(relativeOffset: Double) // -1...+1, 0 is center
+        case personDetected(relativeOffset: Double, faceYaw: Double? = nil) // -1...+1, 0 is center; faceYaw in degrees
         case personLost
+    }
+    
+    /// Published when person detection state changes.
+    /// Subscribe to this to coordinate other systems with tracking.
+    struct DetectionUpdate: Equatable, Sendable {
+        /// Whether a person is currently detected
+        let personDetected: Bool
+        /// Horizontal offset from center (-1...+1), nil if no person
+        let relativeOffset: Double?
+        /// Face yaw angle in degrees (nil if not available)
+        let faceYaw: Double?
+        /// Timestamp of this update
+        let timestamp: Date
+        /// Duration the current person has been tracked (0 if just detected or not tracking)
+        let trackingDuration: TimeInterval
     }
     
     enum LeftHandGesture: Equatable {
@@ -35,6 +51,7 @@ final class StateMachine {
         case none
         case sweep(range: ClosedRange<Double>, period: TimeInterval)
         case patrol(PatrolConfiguration)
+        case minimalIdle(MinimalIdleConfiguration)
         
         struct PatrolConfiguration: Equatable {
             let headings: [Double]
@@ -44,6 +61,24 @@ final class StateMachine {
             let bodyFollowRate: Double
             let headJitterRange: ClosedRange<Double>
             let includeCameraBounds: Bool
+        }
+        
+        struct MinimalIdleConfiguration: Equatable {
+            /// Center position for the body (degrees)
+            let centerHeading: Double
+            /// Amplitude of subtle head sway (degrees)
+            let headSwayAmplitude: Double
+            /// Period of head sway cycle (seconds)
+            let headSwayPeriod: TimeInterval
+            /// Whether body should remain still
+            let bodyStillness: Bool
+            
+            static let `default` = MinimalIdleConfiguration(
+                centerHeading: 0,
+                headSwayAmplitude: 3.0,
+                headSwayPeriod: 8.0,
+                bodyStillness: true
+            )
         }
     }
     
@@ -175,6 +210,7 @@ final class StateMachine {
         var faceHeading: Double?
         var faceOffset: Double?          // last raw offset (-1..+1)
         var lastFaceOffset: Double?
+        var faceYaw: Double?             // face yaw angle in degrees (for engagement detection)
         var facesVisible = false
 
         var tracker = OffsetTracker()
@@ -205,6 +241,7 @@ final class StateMachine {
             faceHeading = nil
             faceOffset = nil
             lastFaceOffset = nil
+            faceYaw = nil
             tracker = OffsetTracker()
             centerHoldBegan = nil
         }
@@ -237,6 +274,16 @@ final class StateMachine {
     private var lastUpdate = Date()
     private var idlePhase: Double = 0
     private var isRunning = false
+    
+    // MARK: - Detection Publisher
+    
+    private let detectionSubject = PassthroughSubject<DetectionUpdate, Never>()
+    
+    /// Publisher for detection state changes.
+    /// Use this to coordinate other systems (e.g., InteractionCoordinator) with person tracking.
+    var detectionPublisher: AnyPublisher<DetectionUpdate, Never> {
+        detectionSubject.eraseToAnyPublisher()
+    }
     
     init(configuration: FigurineConfiguration = .default, telemetry: TelemetryLogger = .shared, settings: Settings = .default, driverFactory: ServoDriverFactory = PhidgetServoDriverFactory()) {
         let mergedSettings = settings.withFigurineConfiguration(configuration)
@@ -404,6 +451,7 @@ final class StateMachine {
 
         // Use the latest personDetected per tick to avoid chasing intra-frame jitter.
         var lastDetectedOffset: Double?
+        var lastDetectedFaceYaw: Double?
         let previouslyVisible = behavior.facesVisible
         var sawPerson = false
 
@@ -439,8 +487,9 @@ final class StateMachine {
                 idlePhase = 0
                 configureInitialPatrolState(now: now)
 
-            case .personDetected(let offset):
+            case .personDetected(let offset, let faceYaw):
                 lastDetectedOffset = offset
+                lastDetectedFaceYaw = faceYaw
                 sawPerson = true
 
             case .personLost:
@@ -470,6 +519,10 @@ final class StateMachine {
 
         if sawPerson {
             behavior.facesVisible = true
+            behavior.faceYaw = lastDetectedFaceYaw
+            if loggingEnabled, let yaw = lastDetectedFaceYaw {
+                logState("tracking.faceYaw", values: ["yaw": String(format: "%.1f", yaw)])
+            }
         } else if lastDetectedOffset == nil {
             behavior.facesVisible = false
         }
@@ -480,6 +533,25 @@ final class StateMachine {
             logState("event.personDetected")
         } else if detectionLost {
             logState("event.personLost")
+        }
+        
+        // Publish detection update if state changed
+        if detectionGained || detectionLost {
+            let trackingDuration: TimeInterval
+            if let focusStart = behavior.focusStart {
+                trackingDuration = now.timeIntervalSince(focusStart)
+            } else {
+                trackingDuration = 0
+            }
+            
+            let update = DetectionUpdate(
+                personDetected: behavior.facesVisible,
+                relativeOffset: lastDetectedOffset,
+                faceYaw: behavior.faceYaw,
+                timestamp: now,
+                trackingDuration: trackingDuration
+            )
+            detectionSubject.send(update)
         }
 
         if !previouslyVisible && behavior.facesVisible {
@@ -523,6 +595,19 @@ final class StateMachine {
             let center = range.midPoint
             let amplitude = range.span / 2
             return center + sin(idlePhase) * amplitude
+        case .minimalIdle(let config):
+            // Subtle head sway only, body stays at center
+            let span = max(config.headSwayPeriod, 0.1)
+            idlePhase = (idlePhase + deltaTime * (2 * .pi / span)).truncatingRemainder(dividingBy: 2 * .pi)
+            let headSway = sin(idlePhase) * config.headSwayAmplitude
+            
+            // Update targets directly for minimal mode
+            if config.bodyStillness {
+                behavior.bodyTarget = config.centerHeading
+            }
+            behavior.headTarget = headSway
+            
+            return config.centerHeading + headSway
         case .patrol(let config):
             var state = behavior.patrolState
             if !state.hasExtremes {
