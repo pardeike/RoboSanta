@@ -4,27 +4,6 @@
 import Foundation
 import Observation
 
-/// Error types for speech queue operations.
-enum SpeechQueueError: Error, LocalizedError {
-    case directoryCreationFailed(URL)
-    case setNotFound(String)
-    case moveOperationFailed(URL, URL)
-    case invalidSetStructure(URL)
-    
-    var errorDescription: String? {
-        switch self {
-        case .directoryCreationFailed(let url):
-            return "Failed to create directory at \(url.path)"
-        case .setNotFound(let id):
-            return "Conversation set not found: \(id)"
-        case .moveOperationFailed(let source, let destination):
-            return "Failed to move from \(source.path) to \(destination.path)"
-        case .invalidSetStructure(let url):
-            return "Invalid conversation set structure at \(url.path)"
-        }
-    }
-}
-
 /// Manages the filesystem-based queue of conversation sets.
 /// Responsible for scanning, consuming, and moving conversation sets.
 /// Thread-safe for use from multiple actors/queues.
@@ -43,6 +22,9 @@ final class SpeechQueueManager {
     
     /// Whether the queue is currently being scanned
     private(set) var isScanning = false
+    
+    /// Last queue count logged to avoid noisy output
+    private var lastLoggedQueueCount: Int = -1
     
     /// Number of available sets
     var queueCount: Int {
@@ -138,7 +120,14 @@ final class SpeechQueueManager {
             
             lock.lock()
             availableSets = sets
+            let newCount = sets.count
+            let shouldLog = lastLoggedQueueCount != newCount
+            lastLoggedQueueCount = newCount
             lock.unlock()
+            
+            if shouldLog {
+                print("📬 SpeechQueue: \(newCount) pending set(s)")
+            }
             
             return sets
         } catch {
@@ -190,6 +179,8 @@ final class SpeechQueueManager {
             }
             lock.unlock()
             
+            print("📥 SpeechQueue: Consuming set \(oldest.id)")
+            
             return inProgressSet
         } catch {
             print("⚠️ SpeechQueueManager: Failed to mark set as in-progress: \(error)")
@@ -232,6 +223,8 @@ final class SpeechQueueManager {
             
             // Prune old completed sets
             pruneCompletedSets()
+            
+            print("📦 SpeechQueue: Completed set \(set.id)")
         } catch {
             print("⚠️ SpeechQueueManager: Failed to move set to completed: \(error)")
         }
@@ -249,6 +242,8 @@ final class SpeechQueueManager {
                 currentSet = nil
             }
             lock.unlock()
+            
+            print("🗑️ SpeechQueue: Discarded set \(set.id)")
         } catch {
             print("⚠️ SpeechQueueManager: Failed to discard set: \(error)")
         }
@@ -273,6 +268,7 @@ final class SpeechQueueManager {
             currentSet = nil
             lock.unlock()
             scanQueue()
+            print("↩️ SpeechQueue: Released set \(set.id) back to queue")
         } catch {
             print("⚠️ SpeechQueueManager: Failed to release set: \(error)")
         }
@@ -327,9 +323,11 @@ final class SpeechQueueManager {
                 
                 if !fileManager.fileExists(atPath: originalURL.path) {
                     try fileManager.moveItem(at: url, to: originalURL)
+                    print("🧹 SpeechQueue: Restored orphaned in-progress set \(originalName)")
                 } else {
                     // Original exists, remove the orphan
                     try fileManager.removeItem(at: url)
+                    print("🧹 SpeechQueue: Removed duplicate in-progress marker for \(originalName)")
                 }
             }
         } catch {

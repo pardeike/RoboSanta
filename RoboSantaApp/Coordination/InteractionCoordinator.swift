@@ -38,6 +38,8 @@ final class InteractionCoordinator {
     private var faceYawAngle: Double? = nil
     private var lastDetectionTime: Date? = nil
     private var trackingStartTime: Date? = nil
+    private var lastLoggedQueueCount: Int? = nil
+    private var pendingLossAfterCurrentPhrase: Bool = false
     
     // MARK: - Current Conversation
     
@@ -135,6 +137,9 @@ final class InteractionCoordinator {
         
         personTracked = update.personDetected
         faceYawAngle = update.faceYaw
+        if update.personDetected {
+            pendingLossAfterCurrentPhrase = false
+        }
         
         if update.personDetected {
             lastDetectionTime = update.timestamp
@@ -143,7 +148,7 @@ final class InteractionCoordinator {
             }
             
             // Track when person was last looking at Santa
-            if isPersonLooking() {
+            if isPersonLooking(tolerance: config.postGreetingFaceYawToleranceDeg) {
                 lastLookingTime = update.timestamp
             }
         } else {
@@ -161,15 +166,21 @@ final class InteractionCoordinator {
     // MARK: - Engagement Detection
     
     /// Returns true if person is looking at Santa (face yaw within tolerance)
-    func isPersonLooking() -> Bool {
+    func isPersonLooking(tolerance: Double? = nil) -> Bool {
         guard let yaw = faceYawAngle else { return false }
-        return abs(yaw) <= config.faceYawToleranceDeg
+        let limit = tolerance ?? config.faceYawToleranceDeg
+        return abs(yaw) <= limit
     }
     
     /// Returns true if person has been tracked long enough to engage
     func hasTrackedLongEnough() -> Bool {
         guard let start = trackingStartTime else { return false }
         return Date().timeIntervalSince(start) >= config.personDetectionDurationSeconds
+    }
+    
+    /// Returns true if a person is tracked long enough regardless of face angle (used to start greeting).
+    func isPersonPresentForGreeting() -> Bool {
+        return personTracked && hasTrackedLongEnough()
     }
     
     /// Returns true if person is engaged (looking + tracked long enough)
@@ -181,13 +192,21 @@ final class InteractionCoordinator {
     
     private func updateQueueState() {
         queueManager.scanQueue()
-        queueCount = queueManager.queueCount
+        let newCount = queueManager.queueCount
+        queueCount = newCount
+        
+        if lastLoggedQueueCount != newCount {
+            lastLoggedQueueCount = newCount
+            print("📊 Interaction: Queue has \(newCount) set(s)")
+        }
     }
     
     private func updateIdleBehavior() {
         if queueManager.hasContent {
+            print("🌲 Interaction: Setting patrol idle behavior (queue has content)")
             stateMachine.send(.setIdleBehavior(.defaultPatrolBehavior))
         } else {
+            print("🌲 Interaction: Setting minimal idle behavior (queue empty)")
             stateMachine.send(.setIdleBehavior(.defaultMinimalIdleBehavior))
         }
     }
@@ -236,8 +255,7 @@ final class InteractionCoordinator {
     
     private func handleIdleState() async {
         if queueManager.hasContent {
-            print("🎄 Queue has content, transitioning to patrolling")
-            state = .patrolling
+            transition(to: .patrolling, reason: "queue has content")
             updateIdleBehavior()
         }
     }
@@ -245,31 +263,28 @@ final class InteractionCoordinator {
     private func handlePatrollingState() async {
         // Check if queue is empty
         if !queueManager.hasContent {
-            print("🎄 Queue empty, transitioning to idle")
-            state = .idle
+            transition(to: .idle, reason: "queue empty")
             updateIdleBehavior()
             return
         }
         
         // Check for engaged person
-        if isPersonEngaged() {
-            print("🎄 Person engaged, transitioning to personDetected")
-            state = .personDetected
+        if isPersonPresentForGreeting() {
+            transition(to: .personDetected, reason: "person detected (pre-greeting)")
         }
     }
     
     private func handlePersonDetectedState() async {
         // Verify person is still engaged
-        guard isPersonEngaged() else {
-            print("🎄 Person no longer engaged, returning to patrolling")
-            state = .patrolling
+        guard isPersonPresentForGreeting() else {
+            transition(to: .patrolling, reason: "person no longer detected for greeting")
             return
         }
         
         // Check if queue has content
         guard queueManager.hasContent else {
             print("🎄 Queue empty during personDetected, returning to idle")
-            state = .idle
+            transition(to: .idle, reason: "queue empty")
             updateIdleBehavior()
             return
         }
@@ -289,9 +304,9 @@ final class InteractionCoordinator {
         isSpeaking = false
         
         if queueManager.hasContent {
-            state = .patrolling
+            transition(to: .patrolling, reason: "cleanup complete, queue has content")
         } else {
-            state = .idle
+            transition(to: .idle, reason: "cleanup complete, queue empty")
         }
         
         updateIdleBehavior()
@@ -299,6 +314,13 @@ final class InteractionCoordinator {
     
     private func handlePersonLostDuringSpeech() {
         print("🎄 Person lost during speech")
+        
+        // Allow the current phrase to finish, then bail.
+        if audioPlayer.isPlaying && !pendingLossAfterCurrentPhrase {
+            pendingLossAfterCurrentPhrase = true
+            print("⏳ Will stop after current phrase finishes")
+            return
+        }
         
         // Check if we should play farewell
         let shouldPlayFarewell: Bool
@@ -310,12 +332,12 @@ final class InteractionCoordinator {
         
         if shouldPlayFarewell && state != .farewell {
             // Transition to farewell (will play end.wav)
-            state = .farewell
+            transition(to: .farewell, reason: "person lost recently")
             Task { await playFarewell() }
         } else {
             // Skip farewell, go directly to personLost
             audioPlayer.stop()
-            state = .personLost
+            transition(to: .personLost, reason: "person lost, skipping farewell")
         }
     }
     
@@ -325,19 +347,19 @@ final class InteractionCoordinator {
         // Consume a conversation set
         guard let set = queueManager.consumeOldest() else {
             print("🎄 Failed to consume conversation set")
-            state = .patrolling
+            transition(to: .patrolling, reason: "no set to consume")
             return
         }
         
         currentSet = set
         currentSetId = set.id
         currentPhraseIndex = 0
-        lastLookingTime = Date()
+        lastLookingTime = nil
         
         print("🎄 Starting conversation with set: \(set.id)")
         
         // Start with greeting
-        state = .greeting
+        transition(to: .greeting, reason: "starting conversation")
         isSpeaking = true
         
         // Play start phrase
@@ -349,17 +371,38 @@ final class InteractionCoordinator {
             return
         }
         
-        // Check if person is still engaged after start
-        if !personTracked {
-            print("🎄 Person lost after greeting")
-            state = .personLost
+        print("👀 Post-greeting check: tracked=\(personTracked) yaw=\(faceYawAngle.map { String(format: "%.1f", $0) } ?? "nil") lastLook=\(lastLookingTime?.timeIntervalSinceNow ?? 0)")
+        
+        // Record a recent look if they're facing us now with lenient tolerance.
+        if personTracked && isPersonLooking(tolerance: config.postGreetingFaceYawToleranceDeg) {
+            lastLookingTime = Date()
+        }
+        
+        // Check engagement after the greeting to decide whether to continue.
+        let attentive = personTracked && (isPersonLooking(tolerance: config.postGreetingFaceYawToleranceDeg) || hasRecentlyLooked())
+        let yawDesc = faceYawAngle.map { String(format: "%.1f", $0) } ?? "nil"
+        print("🎯 Post-greeting engagement: tracked=\(personTracked) yaw=\(yawDesc) tol=\(config.postGreetingFaceYawToleranceDeg) recentLook=\(hasRecentlyLooked())")
+        if !attentive {
+            print("🎄 Person not engaged after greeting; skipping conversation")
+            await playFarewell()
+            await cleanupConversation()
+            return
+        }
+        
+        if pendingLossAfterCurrentPhrase {
+            print("🚪 Person already lost during greeting; ending conversation after greeting")
+            pendingLossAfterCurrentPhrase = false
             await cleanupConversation()
             return
         }
         
         // Play middle phrases if any
         if !set.middleFiles.isEmpty {
-            await playMiddlePhrases(set: set)
+            let shouldContinue = await playMiddlePhrases(set: set)
+            if !shouldContinue {
+                await cleanupConversation()
+                return
+            }
         }
         
         // Play farewell if person is still around
@@ -370,21 +413,22 @@ final class InteractionCoordinator {
         await cleanupConversation()
     }
     
-    private func playMiddlePhrases(set: ConversationSet) async {
+    private func playMiddlePhrases(set: ConversationSet) async -> Bool {
         for (index, middleFile) in set.middleFiles.enumerated() {
             currentPhraseIndex = index + 1
-            state = .conversing(phraseIndex: index + 1, totalPhrases: set.middleFiles.count)
+            transition(to: .conversing(phraseIndex: index + 1, totalPhrases: set.middleFiles.count), reason: "playing middle phrase \(index + 1)")
             
             // Check if person is still looking before each phrase
-            if !isPersonLooking() && !hasRecentlyLooked() {
-                print("🎄 Person stopped looking, skipping remaining middle phrases")
-                break
+            if !isPersonLooking(tolerance: config.postGreetingFaceYawToleranceDeg) && !hasRecentlyLooked() {
+                let yawDesc = faceYawAngle.map { String(format: "%.1f", $0) } ?? "nil"
+                print("🎄 Person stopped looking (yaw=\(yawDesc), tol=\(config.postGreetingFaceYawToleranceDeg)), skipping remaining middle phrases")
+                return false
             }
             
             // Check if person is lost
             if !personTracked {
                 print("🎄 Person lost during middle phrases")
-                break
+                return false
             }
             
             // Play the phrase
@@ -392,15 +436,23 @@ final class InteractionCoordinator {
             
             guard success && !Task.isCancelled else {
                 print("🎄 Middle phrase \(index + 1) failed or cancelled")
-                break
+                return false
+            }
+            
+            if pendingLossAfterCurrentPhrase {
+                print("🚪 Person lost during phrase; stopping after this phrase")
+                pendingLossAfterCurrentPhrase = false
+                return false
             }
         }
+        
+        return true
     }
     
     private func playFarewell() async {
         guard let set = currentSet else { return }
         
-        state = .farewell
+        transition(to: .farewell, reason: "playing farewell")
         
         let success = await audioPlayer.playEnd(of: set)
         
@@ -425,9 +477,9 @@ final class InteractionCoordinator {
         // Return to appropriate state
         updateQueueState()
         if queueManager.hasContent {
-            state = .patrolling
+            transition(to: .patrolling, reason: "conversation complete, queue has content")
         } else {
-            state = .idle
+            transition(to: .idle, reason: "conversation complete, queue empty")
         }
         
         updateIdleBehavior()
@@ -445,5 +497,12 @@ final class InteractionCoordinator {
     private func isRecentlyLost() -> Bool {
         guard let lastDetection = lastDetectionTime else { return false }
         return Date().timeIntervalSince(lastDetection) < config.farewellSkipThresholdSeconds
+    }
+    
+    /// Logs state transitions with reason.
+    private func transition(to newState: InteractionState, reason: String) {
+        guard state != newState else { return }
+        print("🎛 Interaction: \(state) -> \(newState) (\(reason))")
+        state = newState
     }
 }

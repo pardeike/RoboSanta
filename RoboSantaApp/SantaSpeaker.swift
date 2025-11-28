@@ -73,12 +73,8 @@ Svara endast med JSON som matchar schemat.
                 continue
             }
             
-            // Generate a conversation set
-            let success = await generateConversationSet(options: opts)
-            
-            if success {
-                print("🎅 SantaSpeaker: Generated conversation set, queue size: \(queueManager.queueCount + 1)")
-            }
+            // Generate a conversation set (logging handled inside)
+            _ = await generateConversationSet(options: opts)
             
             // Throttle generation
             let throttleNanos = UInt64(queueConfig.generationThrottleSeconds) * 1_000_000_000
@@ -95,6 +91,7 @@ Svara endast med JSON som matchar schemat.
         // Create a new folder for this conversation set
         let timestamp = ConversationSet.generateTimestamp()
         let setFolder = queueConfig.queueDirectory.appendingPathComponent(timestamp)
+        print("🗂️ SantaSpeaker: Preparing set \(timestamp)")
         
         do {
             try FileManager.default.createDirectory(at: setFolder, withIntermediateDirectories: true)
@@ -104,11 +101,13 @@ Svara endast med JSON som matchar schemat.
         }
         
         let interactionType = Int.random(in: 0...3)
+        var interactionName = "unknown"
         var success = false
         
         switch interactionType {
         case 0:
             // Pepp Talk - simple single phrase (start + end only)
+            interactionName = "pepp"
             print("🧠 Generating Pepp Talk (\(randomTopic))")
             struct PeppOut: Decodable { let happyPhrase: String }
             do {
@@ -120,9 +119,10 @@ Svara endast med JSON som matchar schemat.
             } catch {
                 print("🧠 Pepp generation failed: \(error)")
             }
-            
+        
         case 1:
             // Greeting with conversation
+            interactionName = "greeting"
             print("🧠 Generating Greeting (\(randomTopic))")
             struct GreetOut: Decodable { let helloPhrase, conversationPhrase, goodbyePhrase: String }
             do {
@@ -134,9 +134,10 @@ Svara endast med JSON som matchar schemat.
             } catch {
                 print("🧠 Greeting generation failed: \(error)")
             }
-            
+        
         case 2:
             // Quiz
+            interactionName = "quiz"
             print("🧠 Generating Quiz (\(randomTopic))")
             for _ in 1...3 {
                 do {
@@ -157,9 +158,10 @@ Svara endast med JSON som matchar schemat.
                     print("🧠 Quiz generation attempt failed: \(error)")
                 }
             }
-            
+        
         case 3:
             // Joke
+            interactionName = "joke"
             print("🧠 Generating Joke (\(randomTopic))")
             struct JokeOut: Decodable { let helloPhrase, secret, compliment, goodbyePhrase: String }
             do {
@@ -180,6 +182,13 @@ Svara endast med JSON som matchar schemat.
         // Clean up failed generation
         if !success {
             try? FileManager.default.removeItem(at: setFolder)
+            print("🎅 SantaSpeaker: Generation failed for set \(timestamp) [\(interactionName)]")
+        }
+        
+        // Refresh queue count and log the updated size
+        let newCount = queueManager.scanQueue().count
+        if success {
+            print("🎅 SantaSpeaker: Generated set \(timestamp) [\(interactionName)] (queue now \(newCount))")
         }
         
         return success
@@ -239,7 +248,7 @@ Svara endast med JSON som matchar schemat.
             
             // Step 3: Save to destination
             try wavData.write(to: fileURL)
-            print("💾 Saved: \(fileURL.lastPathComponent)")
+            // print("💾 Saved: \(fileURL.lastPathComponent)")
             
         } catch {
             print("TTS generation failed: \(error)")

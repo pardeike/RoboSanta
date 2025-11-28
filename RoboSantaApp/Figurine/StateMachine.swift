@@ -9,6 +9,13 @@ import Combine
 /// All settings can be found in StateMachineSettings.swift and are documented there
 final class StateMachine {
     
+    nonisolated
+    enum LoggingLevel: Equatable {
+        case none
+        case info
+        case debug
+    }
+    
     enum Event: Equatable {
         case idle
         case aimCamera(Double) // degrees relative to Santa's forward direction
@@ -75,9 +82,16 @@ final class StateMachine {
             
             static let `default` = MinimalIdleConfiguration(
                 centerHeading: 0,
-                headSwayAmplitude: 3.0,
-                headSwayPeriod: 8.0,
-                bodyStillness: true
+                headSwayAmplitude: 5.0,
+                headSwayPeriod: 7.0,
+                bodyStillness: false
+            )
+            
+            static let defaultTweaked = MinimalIdleConfiguration(
+                centerHeading: 0,
+                headSwayAmplitude: 6.0,
+                headSwayPeriod: 7.0,
+                bodyStillness: false
             )
         }
     }
@@ -226,6 +240,13 @@ final class StateMachine {
         var leftHandMeasuredAngle: Double?
         var leftHandLastLoggedAngle: Double?
         var rightHandMeasuredAngle: Double?
+        var idleLeftHandOffset: Double = 0
+        var idleRightHandOffset: Double = 0
+        var idleLeftHandTargetOffset: Double = 0
+        var idleRightHandTargetOffset: Double = 0
+        var nextIdleLeftMove: Date?
+        var nextIdleRightMove: Date?
+        var idleCenterDrift: Double = 0
 
         mutating func focus(on heading: Double, now: Date) {
             trackingHeading = heading
@@ -259,7 +280,7 @@ final class StateMachine {
     private let headDriver: ServoDriver
     private let bodyDriver: ServoDriver
     private let settings: Settings
-    private let loggingEnabled: Bool
+    private let loggingLevel: LoggingLevel
     private let workerQueue = DispatchQueue(label: "RoboSanta.StateMachine", qos: .userInitiated)
     private let workerQueueKey = DispatchSpecificKey<Void>()
     
@@ -290,7 +311,7 @@ final class StateMachine {
         self.settings = mergedSettings
         self.configuration = mergedSettings.figurineConfiguration
         self.telemetry = telemetry
-        self.loggingEnabled = mergedSettings.loggingEnabled
+        self.loggingLevel = mergedSettings.loggingEnabled
         self.behavior = BehaviorState(idleBehavior: self.configuration.idleBehavior)
         self.leftHandDriver = driverFactory.createDriver(for: self.configuration.leftHand)
         self.rightHandDriver = driverFactory.createDriver(for: self.configuration.rightHand)
@@ -402,7 +423,7 @@ final class StateMachine {
         workerQueue.async { [weak self] in
             guard let self else { return }
             self.pendingEvents.append(event)
-            if loggingEnabled {
+            if loggingLevel == .debug {
                 switch event {
                 case .personDetected, .personLost:
                     // Only log detection transitions inside processEvents to avoid spam.
@@ -483,16 +504,45 @@ final class StateMachine {
                 behavior.rightGesture = gesture
 
             case .setIdleBehavior(let newBehavior):
-                behavior.idleBehavior = newBehavior
+                if case .minimalIdle(let config) = newBehavior {
+                    let currentHeading = cameraHeadingEstimateLocked()
+                    // Anchor minimal idle to current heading to avoid snaps when entering idle.
+                    let anchored = IdleBehavior.MinimalIdleConfiguration(
+                        centerHeading: clampCamera(currentHeading),
+                        headSwayAmplitude: config.headSwayAmplitude,
+                        headSwayPeriod: config.headSwayPeriod,
+                        bodyStillness: false // allow body drift during minimal idle
+                    )
+                    behavior.idleBehavior = .minimalIdle(anchored)
+                    behavior.idleCenterDrift = clampCamera(currentHeading)
+                } else {
+                    behavior.idleBehavior = newBehavior
+                }
                 idlePhase = 0
-                configureInitialPatrolState(now: now)
+                if case .patrol = behavior.idleBehavior {
+                    configureInitialPatrolState(now: now)
+                }
+                if case .minimalIdle = newBehavior {
+                    behavior.clearFocus()
+                    behavior.facesVisible = false
+                    // Ensure hands are lowered and autopilot state is cleared when going to minimal idle.
+                    resetLeftHandAutopilot(clearTimeCooldown: true)
+                }
 
             case .personDetected(let offset, let faceYaw):
+                // Ignore tracking when in minimal idle mode (queue empty).
+                if case .minimalIdle = behavior.idleBehavior {
+                    break
+                }
                 lastDetectedOffset = offset
                 lastDetectedFaceYaw = faceYaw
                 sawPerson = true
 
             case .personLost:
+                // Ignore loss notifications if we're in minimal idle mode.
+                if case .minimalIdle = behavior.idleBehavior {
+                    break
+                }
                 let hadFocus = behavior.focusStart != nil
                 let handWasActive = behavior.leftHandAutoState != .lowered
                 behavior.clearFocus()
@@ -520,7 +570,7 @@ final class StateMachine {
         if sawPerson {
             behavior.facesVisible = true
             behavior.faceYaw = lastDetectedFaceYaw
-            if loggingEnabled, let yaw = lastDetectedFaceYaw {
+            if loggingLevel == .debug, let yaw = lastDetectedFaceYaw {
                 logState("tracking.faceYaw", values: ["yaw": String(format: "%.1f", yaw)])
             }
         } else if lastDetectedOffset == nil {
@@ -570,6 +620,7 @@ final class StateMachine {
             scheduleOrientationChange(to: desiredHeading, context: context, now: now)
         }
         updateHeadAndBodyTargets(now: now, deltaTime: deltaTime)
+        updateIdleHandOffsets(now: now, deltaTime: deltaTime)
 
         pose.bodyAngle = behavior.bodyTarget
         pose.headAngle = behavior.headTarget
@@ -601,13 +652,17 @@ final class StateMachine {
             idlePhase = (idlePhase + deltaTime * (2 * .pi / span)).truncatingRemainder(dividingBy: 2 * .pi)
             let headSway = sin(idlePhase) * config.headSwayAmplitude
             
+            // Drift center heading slowly toward zero for smooth returns from patrol.
+            let driftRate: Double = 15 // deg/s
+            behavior.idleCenterDrift = approach(current: behavior.idleCenterDrift, target: 0, maxDelta: driftRate * deltaTime)
+            
             // Update targets directly for minimal mode
             if config.bodyStillness {
-                behavior.bodyTarget = config.centerHeading
+                behavior.bodyTarget = behavior.idleCenterDrift
             }
             behavior.headTarget = headSway
             
-            return config.centerHeading + headSway
+            return behavior.idleCenterDrift + headSway
         case .patrol(let config):
             var state = behavior.patrolState
             if !state.hasExtremes {
@@ -1128,16 +1183,10 @@ final class StateMachine {
     private func configureInitialPatrolState(now: Date) {
         guard case .patrol(let config) = behavior.idleBehavior else {
             behavior.patrolState = PatrolState()
-            behavior.bodyTarget = 0
-            behavior.headTarget = 0
-            behavior.desiredHeading = 0
             return
         }
         guard let state = initialPatrolState(for: config, now: now) else {
             behavior.patrolState = PatrolState()
-            behavior.bodyTarget = 0
-            behavior.headTarget = 0
-            behavior.desiredHeading = 0
             return
         }
         behavior.patrolState = state
@@ -1225,6 +1274,8 @@ final class StateMachine {
     }
 
     private func armLeftHandAutopilotIfEligible(now: Date) {
+        // Suppress auto-greetings when running minimal idle behaviour (queue empty).
+        if case .minimalIdle = behavior.idleBehavior { return }
         guard !isLeftHandTimeCooldownActive(now: now) else { return }
         behavior.leftHandAutopilotArmed = true
         logState("leftHand.armed")
@@ -1267,11 +1318,15 @@ final class StateMachine {
         if behavior.leftHandAutoState != .lowered && behavior.leftHandAutoState != .pausingAtTop {
             if let lastLogged = behavior.leftHandLastLoggedAngle {
                 if abs(angle - lastLogged) >= logThreshold {
-                    logState("leftHand.position", values: ["angle": String(format: "%.2f", angle)])
+                    if loggingLevel == .debug {
+                        logState("leftHand.position", values: ["angle": String(format: "%.2f", angle)])
+                    }
                     behavior.leftHandLastLoggedAngle = angle
                 }
             } else {
-                logState("leftHand.position", values: ["angle": String(format: "%.2f", angle)])
+                if loggingLevel == .debug {
+                    logState("leftHand.position", values: ["angle": String(format: "%.2f", angle)])
+                }
                 behavior.leftHandLastLoggedAngle = angle
             }
         }
@@ -1398,10 +1453,81 @@ final class StateMachine {
         }
     }
     
+    private func updateIdleHandOffsets(now: Date, deltaTime: TimeInterval) {
+        let offsetRange: ClosedRange<Double> = (-0.05)...0.05
+        let pauseRange: ClosedRange<TimeInterval> = 1.0...3.0
+        let slewPerSecond: Double = 0.4
+        let maxDelta = slewPerSecond * deltaTime
+        
+        let inMinimalIdle: Bool
+        if case .minimalIdle = behavior.idleBehavior, behavior.currentContext == .search {
+            inMinimalIdle = true
+        } else {
+            inMinimalIdle = false
+        }
+        
+        func resetOffsets() {
+            behavior.idleLeftHandTargetOffset = 0
+            behavior.idleRightHandTargetOffset = 0
+            behavior.idleLeftHandOffset = approach(current: behavior.idleLeftHandOffset, target: 0, maxDelta: maxDelta)
+            behavior.idleRightHandOffset = approach(current: behavior.idleRightHandOffset, target: 0, maxDelta: maxDelta)
+            behavior.nextIdleLeftMove = nil
+            behavior.nextIdleRightMove = nil
+        }
+        
+        guard inMinimalIdle else {
+            resetOffsets()
+            return
+        }
+        
+        // Left hand (only when not under autopilot control)
+        if behavior.leftHandAutoState == .lowered && behavior.leftHandTargetAngle == nil {
+            if behavior.nextIdleLeftMove == nil || now >= (behavior.nextIdleLeftMove ?? now) {
+                behavior.idleLeftHandTargetOffset = randomValue(in: offsetRange)
+                behavior.nextIdleLeftMove = now + randomInterval(in: pauseRange)
+            }
+            behavior.idleLeftHandOffset = approach(
+                current: behavior.idleLeftHandOffset,
+                target: behavior.idleLeftHandTargetOffset,
+                maxDelta: maxDelta
+            )
+        } else {
+            behavior.idleLeftHandTargetOffset = 0
+            behavior.idleLeftHandOffset = approach(current: behavior.idleLeftHandOffset, target: 0, maxDelta: maxDelta)
+            behavior.nextIdleLeftMove = nil
+        }
+        
+        // Right hand (only when not performing other gestures)
+        if behavior.rightGesture == .down {
+            if behavior.nextIdleRightMove == nil || now >= (behavior.nextIdleRightMove ?? now) {
+                behavior.idleRightHandTargetOffset = randomValue(in: offsetRange)
+                behavior.nextIdleRightMove = now + randomInterval(in: pauseRange)
+            }
+            behavior.idleRightHandOffset = approach(
+                current: behavior.idleRightHandOffset,
+                target: behavior.idleRightHandTargetOffset,
+                maxDelta: maxDelta
+            )
+        } else {
+            behavior.idleRightHandTargetOffset = 0
+            behavior.idleRightHandOffset = approach(current: behavior.idleRightHandOffset, target: 0, maxDelta: maxDelta)
+            behavior.nextIdleRightMove = nil
+        }
+    }
+    
     private func leftHandValue(deltaTime: TimeInterval) -> Double {
         // Return the actual measured position if available (for smooth animation)
         if let measured = behavior.leftHandMeasuredAngle {
             return measured
+        }
+        // Idle wiggle during minimal idle (no autopilot control)
+        if case .minimalIdle = behavior.idleBehavior,
+           behavior.leftHandAutoState == .lowered,
+           behavior.leftHandTargetAngle == nil {
+            let range = configuration.leftHand.logicalRange
+            let base = range.lowerBound
+            let value = base + behavior.idleLeftHandOffset
+            return value.clamped(to: range)
         }
         // Fallback to gesture-based values
         switch behavior.leftGesture {
@@ -1417,6 +1543,11 @@ final class StateMachine {
     
     private func rightHandValue() -> Double {
         let range = configuration.rightHand.logicalRange
+        if case .minimalIdle = behavior.idleBehavior,
+           behavior.rightGesture == .down {
+            let value = range.lowerBound + behavior.idleRightHandOffset
+            return value.clamped(to: range)
+        }
         switch behavior.rightGesture {
         case .down: return range.lowerBound
         case .point: return range.lowerBound + range.span * 0.5
@@ -1460,7 +1591,7 @@ final class StateMachine {
     }
     
     private func logEvent(_ type: String, values: [String: CustomStringConvertible] = [:]) {
-        guard loggingEnabled else { return }
+        if loggingLevel == .none { return }
         var payload: [String: CustomStringConvertible] = ["type": type]
         for (k, v) in values { payload[k] = v }
         if let common = telemetryPayload(from: payload), let json = telemetry.serialize(common) {
@@ -1469,7 +1600,7 @@ final class StateMachine {
     }
 
     private func logState(_ label: String, values: [String: CustomStringConvertible] = [:]) {
-        guard loggingEnabled else { return }
+        if loggingLevel == .none { return }
         let timestamp = String(format: "%.3f", Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 1000))
         var message = "[\(timestamp)] [state] \(label)"
         if !values.isEmpty {

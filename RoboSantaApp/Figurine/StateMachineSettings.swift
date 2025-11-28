@@ -10,7 +10,7 @@ extension StateMachine {
         /// Turns diagnostic logging on/off.
         /// Lowering (false) silences console/telemetry noise; raising (true) is useful while tuning.
         /// Typical: true in dev, false for production demos.
-        let loggingEnabled: Bool
+        let loggingEnabled: LoggingLevel
 
         /// Normalized horizontal offset (0...1) below which the body is frozen while tracking.
         /// Lower = freeze more often (steadier head, slower body recenter); higher = body keeps moving near center.
@@ -141,7 +141,7 @@ extension StateMachine {
 
         /// Default tuning values used by the app.
         static let `default` = Settings(
-            loggingEnabled: true,
+            loggingEnabled: .info,
             centerHoldOffsetNorm: 0.06,
             centerHoldVelDeg: 10.0,
             centerHoldMin: 0.18,
@@ -413,11 +413,11 @@ extension StateMachine.IdleBehavior {
     static var defaultPatrolBehavior: StateMachine.IdleBehavior {
         .patrol(.defaultPatrolConfiguration)
     }
-    
+
     /// Minimal idle behaviour: subtle head sway with stationary body.
     /// Used when the speech queue is empty.
     static var defaultMinimalIdleBehavior: StateMachine.IdleBehavior {
-        .minimalIdle(.default)
+        .minimalIdle(.defaultTweaked)
     }
 }
 
