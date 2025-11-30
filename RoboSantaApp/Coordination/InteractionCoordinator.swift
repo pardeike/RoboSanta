@@ -361,12 +361,16 @@ final class InteractionCoordinator {
         // Handle different interaction types
         switch set.type {
         case .pointing:
+            // Suppress waving during pointing to avoid both arms going up
+            stateMachine.send(.suppressWaving)
             transition(to: .greeting, reason: "starting pointing interaction")
             isSpeaking = true
             let success = await playPointingInteraction(set: set)
             if !success {
                 print("🎄 Pointing interaction failed")
             }
+            // Re-enable waving after pointing is complete
+            stateMachine.send(.allowWaving)
             // Pointing has no farewell
             await cleanupConversation()
             return

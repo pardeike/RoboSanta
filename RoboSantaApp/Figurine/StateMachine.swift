@@ -28,6 +28,8 @@ final class StateMachine {
         case startPointingGesture      // Triggers raise to half position
         case pointingAttentionDone     // Signal to raise to full position
         case pointingLectureDone       // Signal to lower
+        case suppressWaving            // Suppress automatic waving (for pointing interactions)
+        case allowWaving               // Re-enable automatic waving
     }
     
     /// Published when person detection state changes.
@@ -260,6 +262,7 @@ final class StateMachine {
         var leftHandAutopilotArmed = false
         var leftHandMeasuredAngle: Double?
         var leftHandLastLoggedAngle: Double?
+        var wavingSuppressed = false  // Suppresses automatic waving during pointing
         var rightHandMeasuredAngle: Double?
         var rightHandAutoState: RightHandAutoState = .lowered
         var rightHandTargetAngle: Double?
@@ -613,6 +616,22 @@ final class StateMachine {
                     setRightHandTarget(angle: downPosition, speed: settings.rightHandLowerSpeed)
                     logState("rightHand.lowering")
                 }
+            
+            case .suppressWaving:
+                behavior.wavingSuppressed = true
+                // If waving is currently in progress, interrupt and lower the left hand
+                if behavior.leftHandAutoState != .lowered && behavior.leftHandAutoState != .lowering {
+                    behavior.leftHandAutoState = .lowering
+                    let minAngle = configuration.leftHand.logicalRange.lowerBound
+                    setLeftHandTarget(angle: minAngle, speed: settings.leftHandLowerSpeed)
+                    logState("leftHand.loweringDueToWavingSuppress")
+                }
+                behavior.leftHandAutopilotArmed = false
+                logState("waving.suppressed")
+            
+            case .allowWaving:
+                behavior.wavingSuppressed = false
+                logState("waving.allowed")
             }
         }
 
@@ -1325,6 +1344,8 @@ final class StateMachine {
     private func armLeftHandAutopilotIfEligible(now: Date) {
         // Suppress auto-greetings when running minimal idle behaviour (queue empty).
         if case .minimalIdle = behavior.idleBehavior { return }
+        // Suppress waving during pointing interactions
+        guard !behavior.wavingSuppressed else { return }
         guard !isLeftHandTimeCooldownActive(now: now) else { return }
         behavior.leftHandAutopilotArmed = true
         logState("leftHand.armed")
@@ -1622,8 +1643,10 @@ final class StateMachine {
     }
     
     private func leftHandValue(deltaTime: TimeInterval) -> Double {
-        // Return the actual measured position if available (for smooth animation)
-        if let measured = behavior.leftHandMeasuredAngle {
+        // Return the actual measured position if available (for smooth animation during autopilot)
+        // Only use measured position when autopilot is active to allow idle offsets to work
+        if let measured = behavior.leftHandMeasuredAngle,
+           behavior.leftHandAutoState != .lowered {
             return measured
         }
         // Idle wiggle during minimal idle (no autopilot control)
