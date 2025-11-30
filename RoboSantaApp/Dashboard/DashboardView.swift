@@ -20,6 +20,9 @@ enum SantaColors {
 struct DashboardView: View {
     @EnvironmentObject var visionSource: VisionDetectionSource
     @ObservedObject var coordinator: RuntimeCoordinator
+    let queueManager: SpeechQueueManager
+    var interaction: InteractionCoordinator?
+    
     @State private var pose = StateMachine.FigurinePose()
     @State private var stats = DashboardStats.shared
     @State private var sessionTime = ""
@@ -27,6 +30,20 @@ struct DashboardView: View {
     @State private var interactionState: InteractionState = .idle
     @State private var isSpeaking: Bool = false
     @State private var pulseAnimation = false
+    
+    /// Default initializer using app globals
+    init(coordinator: RuntimeCoordinator) {
+        self.coordinator = coordinator
+        self.queueManager = speechQueueManager
+        self.interaction = interactionCoordinator
+    }
+    
+    /// Full initializer for testing
+    init(coordinator: RuntimeCoordinator, queueManager: SpeechQueueManager, interaction: InteractionCoordinator?) {
+        self.coordinator = coordinator
+        self.queueManager = queueManager
+        self.interaction = interaction
+    }
     
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
@@ -476,8 +493,8 @@ struct DashboardView: View {
     }
     
     private func updateQueueInfo() {
-        queueCount = speechQueueManager.queueCount
-        if let ic = interactionCoordinator {
+        queueCount = queueManager.queueCount
+        if let ic = interaction {
             stats.updateState(ic.state)
             isSpeaking = ic.isSpeaking
         }
