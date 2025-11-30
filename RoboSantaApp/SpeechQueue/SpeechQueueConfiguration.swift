@@ -23,6 +23,9 @@ struct SpeechQueueConfiguration: Equatable, Sendable {
     /// Delay in seconds between conversation set generations.
     let generationThrottleSeconds: Int
     
+    /// Delay in seconds between queue-size checks while generation is paused.
+    let queueFullCheckIntervalSeconds: Int
+    
     /// Maximum number of completed sets to keep in DONE folder.
     /// Older sets beyond this limit will be pruned.
     let maxDoneSetsToKeep: Int
@@ -33,9 +36,10 @@ struct SpeechQueueConfiguration: Equatable, Sendable {
             .appendingPathComponent("RoboSanta/SpeechQueue"),
         doneDirectory: URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent("RoboSanta/SpeechQueue/DONE"),
-        maxQueueSize: 20,
+        maxQueueSize: 500,
         minQueueSize: 5,
-        generationThrottleSeconds: 180,
+        generationThrottleSeconds: 0,
+        queueFullCheckIntervalSeconds: 5,
         maxDoneSetsToKeep: 50
     )
     
@@ -46,13 +50,15 @@ struct SpeechQueueConfiguration: Equatable, Sendable {
     ///   - maxQueueSize: Maximum queue size before pausing generation
     ///   - minQueueSize: Minimum queue size before resuming generation
     ///   - generationThrottleSeconds: Delay between generations
+    ///   - queueFullCheckIntervalSeconds: Delay between queue checks while paused
     ///   - maxDoneSetsToKeep: Maximum completed sets to retain
     init(
         queueDirectory: URL,
         doneDirectory: URL,
-        maxQueueSize: Int = 20,
+        maxQueueSize: Int = 500,
         minQueueSize: Int = 5,
-        generationThrottleSeconds: Int = 180,
+        generationThrottleSeconds: Int = 0,
+        queueFullCheckIntervalSeconds: Int = 5,
         maxDoneSetsToKeep: Int = 50
     ) {
         self.queueDirectory = queueDirectory
@@ -60,6 +66,7 @@ struct SpeechQueueConfiguration: Equatable, Sendable {
         self.maxQueueSize = maxQueueSize
         self.minQueueSize = minQueueSize
         self.generationThrottleSeconds = generationThrottleSeconds
+        self.queueFullCheckIntervalSeconds = queueFullCheckIntervalSeconds
         self.maxDoneSetsToKeep = maxDoneSetsToKeep
     }
 }

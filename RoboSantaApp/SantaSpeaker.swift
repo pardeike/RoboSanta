@@ -70,7 +70,8 @@ Svara endast med JSON som matchar schemat.
             
             if queueManager.shouldPauseGeneration {
                 print("🎅 SantaSpeaker: Queue full (\(queueManager.queueCount) sets), waiting...")
-                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5 seconds
+                let pauseNanos = UInt64(queueConfig.queueFullCheckIntervalSeconds) * 1_000_000_000
+                try? await Task.sleep(nanoseconds: pauseNanos)
                 continue
             }
             
@@ -78,8 +79,10 @@ Svara endast med JSON som matchar schemat.
             _ = await generateConversationSet(options: opts)
             
             // Throttle generation
-            let throttleNanos = UInt64(queueConfig.generationThrottleSeconds) * 1_000_000_000
-            try? await Task.sleep(nanoseconds: throttleNanos)
+            if queueConfig.generationThrottleSeconds > 0 {
+                let throttleNanos = UInt64(queueConfig.generationThrottleSeconds) * 1_000_000_000
+                try? await Task.sleep(nanoseconds: throttleNanos)
+            }
         }
         
         print("🎅 SantaSpeaker: Generation loop ended")
