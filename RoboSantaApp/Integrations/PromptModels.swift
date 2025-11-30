@@ -101,7 +101,7 @@ let pointingSchema = Model(
     properties: [
         Property(
             name: "attentionPhrase",
-            description: "Ett GENERISKT utrop (1-3 ord) för att fånga uppmärksamhet. MÅSTE vara oberoende av ämnet. Välj ETT av dessa: 'Hallå du!', 'Psst!', 'Lyssna!', 'Du där!', 'Hallå!', 'Hörru!', 'Titta här!', 'Stopp!'",
+            description: "Ett GENERISKT utrop (1-3 ord) för att fånga uppmärksamhet. MÅSTE vara oberoende av ämnet. Välj SLUMPMÄSSIGT ett av: 'Hallå du!', 'Psst!', 'Lyssna!', 'Du där!', 'Hallå!', 'Hörru!', 'Titta här!', 'Stopp!', 'Vänta!', 'Akta dig!', 'Kolla!', 'Hej du!'. VARIERA valet varje gång!",
             minLength: 2, maxLength: 15, disallowQuestion: true
         ),
         Property(

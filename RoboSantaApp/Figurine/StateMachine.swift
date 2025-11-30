@@ -626,6 +626,8 @@ final class StateMachine {
                     setLeftHandTarget(angle: minAngle, speed: settings.leftHandLowerSpeed)
                     logState("leftHand.loweringDueToWavingSuppress")
                 }
+                // Clear any pending state that could cause issues
+                behavior.leftHandPauseEndTime = nil
                 behavior.leftHandAutopilotArmed = false
                 logState("waving.suppressed")
             
@@ -1517,9 +1519,20 @@ final class StateMachine {
             }
             
         case .lowering:
-            // Waiting for servo to reach bottom position
-            // Position observer will handle transition to cooldown
-            break
+            // Ensure the servo is still being commanded to lower
+            // This handles edge cases where the servo stalled or position observer didn't fire
+            if behavior.leftHandTargetAngle == nil {
+                let minAngle = configuration.leftHand.logicalRange.lowerBound
+                setLeftHandTarget(angle: minAngle, speed: settings.leftHandLowerSpeed)
+                logState("leftHand.reLowering")
+            }
+            // Check if we've reached the lowered position using measured angle
+            if let measured = behavior.leftHandMeasuredAngle {
+                let minAngle = configuration.leftHand.logicalRange.lowerBound
+                if hasReachedTarget(measured: measured, target: minAngle) {
+                    enterLeftHandCooldown(now: now)
+                }
+            }
         }
     }
     
