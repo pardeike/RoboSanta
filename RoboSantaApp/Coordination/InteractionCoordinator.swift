@@ -40,6 +40,7 @@ final class InteractionCoordinator {
     private var trackingStartTime: Date? = nil
     private var lastLoggedQueueCount: Int? = nil
     private var pendingLossAfterCurrentPhrase: Bool = false
+    private var wavingCurrentlySuppressed: Bool = false
     
     // MARK: - Current Conversation
     
@@ -213,11 +214,16 @@ final class InteractionCoordinator {
     
     /// Checks the next queued interaction and suppresses waving if it's a pointing type.
     /// This prevents both arms from going up simultaneously.
+    /// Only sends events when the suppression state actually changes.
     private func updateWavingSuppressionForNextInteraction() {
-        if let nextSet = queueManager.peekOldest(), nextSet.type == .pointing {
-            stateMachine.send(.suppressWaving)
-        } else {
-            stateMachine.send(.allowWaving)
+        let shouldSuppress = queueManager.peekOldest()?.type == .pointing
+        if shouldSuppress != wavingCurrentlySuppressed {
+            wavingCurrentlySuppressed = shouldSuppress
+            if shouldSuppress {
+                stateMachine.send(.suppressWaving)
+            } else {
+                stateMachine.send(.allowWaving)
+            }
         }
     }
     
@@ -277,7 +283,11 @@ final class InteractionCoordinator {
         if !queueManager.hasContent {
             transition(to: .idle, reason: "queue empty")
             updateIdleBehavior()
-            stateMachine.send(.allowWaving) // Re-enable waving when idle
+            // Re-enable waving when idle
+            if wavingCurrentlySuppressed {
+                wavingCurrentlySuppressed = false
+                stateMachine.send(.allowWaving)
+            }
             return
         }
         
@@ -379,7 +389,10 @@ final class InteractionCoordinator {
         case .pointing:
             // Waving should already be suppressed by updateWavingSuppressionForNextInteraction()
             // but ensure it's suppressed as a safety measure
-            stateMachine.send(.suppressWaving)
+            if !wavingCurrentlySuppressed {
+                wavingCurrentlySuppressed = true
+                stateMachine.send(.suppressWaving)
+            }
             transition(to: .greeting, reason: "starting pointing interaction")
             isSpeaking = true
             let success = await playPointingInteraction(set: set)
@@ -402,7 +415,10 @@ final class InteractionCoordinator {
         default:
             // Standard flow for greeting, quiz, joke, unknown
             // Ensure waving is allowed for non-pointing interactions
-            stateMachine.send(.allowWaving)
+            if wavingCurrentlySuppressed {
+                wavingCurrentlySuppressed = false
+                stateMachine.send(.allowWaving)
+            }
             break
         }
         
@@ -569,7 +585,10 @@ final class InteractionCoordinator {
         } else {
             transition(to: .idle, reason: "conversation complete, queue empty")
             // Allow waving when idle with empty queue
-            stateMachine.send(.allowWaving)
+            if wavingCurrentlySuppressed {
+                wavingCurrentlySuppressed = false
+                stateMachine.send(.allowWaving)
+            }
         }
         
         updateIdleBehavior()
