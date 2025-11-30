@@ -32,6 +32,17 @@ final class DashboardStats {
         greetingCount + peppCount + quizCount + jokeCount + pointingCount
     }
     
+    // MARK: - Engagement Statistics
+    
+    /// People who walked by without engaging (detected but left quickly)
+    private(set) var ignoredCount: Int = 0
+    
+    /// People who showed some interest but left during interaction
+    private(set) var partialEngagementCount: Int = 0
+    
+    /// People who stayed for the full interaction
+    private(set) var fullEngagementCount: Int = 0
+    
     // MARK: - People Statistics
     
     /// Number of unique people detected (approximation based on sessions)
@@ -101,6 +112,21 @@ final class DashboardStats {
         case .unknown:
             greetingCount += 1 // Count unknown as greeting
         }
+    }
+    
+    /// Records engagement level when interaction ends
+    /// - Parameter completed: true if person stayed for full interaction, false if they left early
+    func recordEngagement(completed: Bool) {
+        if completed {
+            fullEngagementCount += 1
+        } else {
+            partialEngagementCount += 1
+        }
+    }
+    
+    /// Records that a person walked by without engaging
+    func recordIgnored() {
+        ignoredCount += 1
     }
     
     /// Records that a person was engaged

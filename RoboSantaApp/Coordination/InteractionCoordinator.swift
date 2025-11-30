@@ -306,6 +306,10 @@ final class InteractionCoordinator {
         // Verify person is still engaged
         guard isPersonPresentForGreeting() else {
             transition(to: .patrolling, reason: "person no longer detected for greeting")
+            // Person was detected but left without engaging
+            Task { @MainActor in
+                DashboardStats.shared.recordIgnored()
+            }
             return
         }
         
@@ -326,6 +330,11 @@ final class InteractionCoordinator {
         if let set = currentSet {
             queueManager.moveToCompleted(set)
             currentSet = nil
+            
+            // Record partial engagement (person left during interaction)
+            Task { @MainActor in
+                DashboardStats.shared.recordEngagement(completed: false)
+            }
         }
         
         currentSetId = nil
@@ -580,6 +589,8 @@ final class InteractionCoordinator {
             // Record interaction in dashboard stats
             Task { @MainActor in
                 DashboardStats.shared.recordInteraction(type: set.type)
+                // Person stayed for full interaction
+                DashboardStats.shared.recordEngagement(completed: true)
             }
         }
         

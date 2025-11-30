@@ -3,17 +3,17 @@
 
 import SwiftUI
 import Combine
+import Charts
 
-/// Santa-themed color palette
+/// Santa-themed color palette (red, white, black like our Santa)
 enum SantaColors {
-    static let background = Color(red: 0.08, green: 0.06, blue: 0.1)
-    static let primaryRed = Color(red: 0.8, green: 0.15, blue: 0.15)
-    static let secondaryRed = Color(red: 0.6, green: 0.1, blue: 0.1)
-    static let gold = Color(red: 0.85, green: 0.7, blue: 0.3)
-    static let green = Color(red: 0.2, green: 0.5, blue: 0.25)
+    static let background = Color.black
+    static let primaryRed = Color(red: 0.85, green: 0.1, blue: 0.1)
+    static let secondaryRed = Color(red: 0.6, green: 0.05, blue: 0.05)
+    static let accent = Color.white
     static let white = Color.white
-    static let cardBackground = Color(white: 0.12)
-    static let cardBorder = Color(white: 0.2)
+    static let cardBackground = Color(white: 0.08)
+    static let cardBorder = Color(red: 0.4, green: 0.1, blue: 0.1)
 }
 
 /// Main dashboard view for physical mode
@@ -50,16 +50,9 @@ struct DashboardView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Background gradient
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        SantaColors.background,
-                        Color(red: 0.12, green: 0.08, blue: 0.15)
-                    ]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                // Background - solid black
+                SantaColors.background
+                    .ignoresSafeArea()
                 
                 // Snow particle effect overlay
                 SnowfallView()
@@ -70,37 +63,42 @@ struct DashboardView: View {
                 VStack(spacing: 0) {
                     // Header
                     headerSection
-                        .padding(.top, 20)
+                        .padding(.top, 16)
                         .padding(.horizontal, 40)
+                        .padding(.bottom, 12)
                     
-                    // Main content area
-                    HStack(spacing: 24) {
+                    // Main content area - fills remaining space
+                    HStack(alignment: .top, spacing: 24) {
                         // Left column - Camera and servo info
-                        VStack(spacing: 20) {
+                        VStack(spacing: 16) {
                             cameraPreviewCard
                             servoInfoCard
                         }
                         .frame(width: geometry.size.width * 0.4)
+                        .frame(maxHeight: .infinity)
                         
-                        // Middle column - Status and state
-                        VStack(spacing: 20) {
+                        // Middle column - Status and state (fills vertical space)
+                        VStack(spacing: 16) {
                             stateCard
                             queueCard
                             generationCard
+                            Spacer(minLength: 0)
                         }
                         .frame(width: geometry.size.width * 0.25)
+                        .frame(maxHeight: .infinity)
                         
-                        // Right column - Statistics and QR
-                        VStack(spacing: 20) {
-                            statisticsCard
+                        // Right column - Statistics and QR (fills vertical space)
+                        VStack(spacing: 16) {
+                            engagementCard
+                            statisticsChartCard
                             qrCodeCard
+                            Spacer(minLength: 0)
                         }
                         .frame(width: geometry.size.width * 0.25)
+                        .frame(maxHeight: .infinity)
                     }
                     .padding(.horizontal, 40)
-                    .padding(.vertical, 20)
-                    
-                    Spacer()
+                    .padding(.bottom, 20)
                 }
             }
         }
@@ -120,23 +118,22 @@ struct DashboardView: View {
     // MARK: - Header
     
     private var headerSection: some View {
-        VStack(spacing: 4) {
-            Text("LEVERANSTOMTE")
-                .font(.system(size: 56, weight: .black, design: .rounded))
+        VStack(spacing: 8) {
+            Text("🎅 LEVERANSTOMTE 🎅")
+                .font(.system(size: 72, weight: .black, design: .rounded))
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [SantaColors.gold, Color(red: 1.0, green: 0.85, blue: 0.4)],
+                        colors: [SantaColors.primaryRed, Color(red: 1.0, green: 0.3, blue: 0.3)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
-                .shadow(color: SantaColors.gold.opacity(0.5), radius: 10)
+                .shadow(color: SantaColors.primaryRed.opacity(0.5), radius: 10)
             
             Text("Ett projekt av LK Arkitektur")
-                .font(.system(size: 18, weight: .medium, design: .rounded))
-                .foregroundColor(SantaColors.white.opacity(0.7))
+                .font(.system(size: 28, weight: .medium, design: .rounded))
+                .foregroundColor(SantaColors.white.opacity(0.8))
         }
-        .padding(.bottom, 10)
     }
     
     // MARK: - Camera Preview Card
@@ -147,7 +144,7 @@ struct DashboardView: View {
                 // Blurred camera preview
                 BlurredCameraPreview()
                     .environmentObject(visionSource)
-                    .cornerRadius(8)
+                    .cornerRadius(12)
                 
                 // Face detection overlay is handled by VisionDetectionSource
                 
@@ -156,30 +153,30 @@ struct DashboardView: View {
                     VStack {
                         HStack {
                             Spacer()
-                            HStack(spacing: 6) {
+                            HStack(spacing: 10) {
                                 Circle()
-                                    .fill(SantaColors.green)
-                                    .frame(width: 10, height: 10)
+                                    .fill(Color.green)
+                                    .frame(width: 16, height: 16)
                                     .scaleEffect(pulseAnimation ? 1.2 : 1.0)
                                     .animation(
                                         .easeInOut(duration: 0.6).repeatForever(autoreverses: true),
                                         value: pulseAnimation
                                     )
                                 Text("PERSON UPPTÄCKT")
-                                    .font(.caption.bold())
+                                    .font(.system(size: 20, weight: .bold))
                                     .foregroundColor(.white)
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color.black.opacity(0.6))
-                            .cornerRadius(6)
-                            .padding(8)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(10)
+                            .padding(12)
                         }
                         Spacer()
                     }
                 }
             }
-            .frame(minHeight: 200)
+            .frame(minHeight: 250)
         }
     }
     
@@ -187,12 +184,12 @@ struct DashboardView: View {
     
     private var servoInfoCard: some View {
         DashboardCard(title: "SERVOPOSITONER", icon: "gearshape.2.fill") {
-            VStack(spacing: 12) {
-                HStack(spacing: 16) {
+            VStack(spacing: 20) {
+                HStack(spacing: 24) {
                     servoGauge(label: "KROPP", value: pose.bodyAngle, range: -105...105, unit: "°", color: ServoColor.body)
                     servoGauge(label: "HUVUD", value: pose.headAngle, range: -30...30, unit: "°", color: ServoColor.head)
                 }
-                HStack(spacing: 16) {
+                HStack(spacing: 24) {
                     servoGauge(label: "VÄNSTER ARM", value: pose.leftHand * 100, range: 0...100, unit: "%", color: ServoColor.leftArm)
                     servoGauge(label: "HÖGER ARM", value: pose.rightHand * 100, range: 0...100, unit: "%", color: ServoColor.rightArm)
                 }
@@ -201,34 +198,34 @@ struct DashboardView: View {
     }
     
     private func servoGauge(label: String, value: Double, range: ClosedRange<Double>, unit: String, color: Color) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 10) {
             Text(label)
-                .font(.caption2.bold())
-                .foregroundColor(.white.opacity(0.6))
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.white.opacity(0.7))
             
             ZStack {
                 Circle()
-                    .stroke(color.opacity(0.2), lineWidth: 8)
+                    .stroke(color.opacity(0.2), lineWidth: 12)
                 
                 Circle()
                     .trim(from: 0, to: normalizedValue(value, in: range))
                     .stroke(
                         LinearGradient(colors: [color, color.opacity(0.6)], startPoint: .top, endPoint: .bottom),
-                        style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                        style: StrokeStyle(lineWidth: 12, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.3), value: value)
                 
-                VStack(spacing: 0) {
+                VStack(spacing: 2) {
                     Text(String(format: "%.1f", value))
-                        .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundColor(.white)
                     Text(unit)
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.5))
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
                 }
             }
-            .frame(width: 80, height: 80)
+            .frame(width: 110, height: 110)
         }
         .frame(maxWidth: .infinity)
     }
@@ -242,20 +239,20 @@ struct DashboardView: View {
     
     private var stateCard: some View {
         DashboardCard(title: "TILLSTÅND", icon: "cpu.fill") {
-            VStack(spacing: 16) {
+            VStack(spacing: 20) {
                 // Current state display
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Aktuellt läge")
-                            .font(.caption)
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                         Text(stateDisplayName(stats.currentStateName))
-                            .font(.title2.bold())
+                            .font(.system(size: 32, weight: .bold))
                             .foregroundColor(stateColor(stats.currentStateName))
                     }
                     Spacer()
                     stateIcon(stats.currentStateName)
-                        .font(.system(size: 32))
+                        .font(.system(size: 56))
                         .foregroundColor(stateColor(stats.currentStateName))
                 }
                 
@@ -265,15 +262,15 @@ struct DashboardView: View {
                 // Speaking indicator
                 HStack {
                     Circle()
-                        .fill(isSpeaking ? SantaColors.green : Color.gray.opacity(0.3))
-                        .frame(width: 12, height: 12)
+                        .fill(isSpeaking ? Color.green : Color.gray.opacity(0.3))
+                        .frame(width: 20, height: 20)
                         .scaleEffect(isSpeaking && pulseAnimation ? 1.3 : 1.0)
                         .animation(
                             isSpeaking ? .easeInOut(duration: 0.5).repeatForever(autoreverses: true) : .default,
                             value: pulseAnimation
                         )
                     Text(isSpeaking ? "TALAR" : "TYST")
-                        .font(.caption.bold())
+                        .font(.system(size: 22, weight: .bold))
                         .foregroundColor(.white.opacity(0.8))
                     Spacer()
                 }
@@ -281,9 +278,10 @@ struct DashboardView: View {
                 // Session time
                 HStack {
                     Image(systemName: "clock.fill")
-                        .foregroundColor(SantaColors.gold.opacity(0.7))
+                        .font(.system(size: 24))
+                        .foregroundColor(SantaColors.primaryRed.opacity(0.8))
                     Text("Session: \(sessionTime)")
-                        .font(.caption)
+                        .font(.system(size: 20, weight: .medium))
                         .foregroundColor(.white.opacity(0.7))
                     Spacer()
                 }
@@ -310,13 +308,13 @@ struct DashboardView: View {
     private func stateColor(_ state: String) -> Color {
         switch state {
         case "idle": return .gray
-        case "patrolling": return SantaColors.gold
-        case "personDetected": return SantaColors.green
-        case "greeting", "farewell": return SantaColors.primaryRed
+        case "patrolling": return SantaColors.primaryRed
+        case "personDetected": return Color.green
+        case "greeting", "farewell": return SantaColors.white
         case "personLost": return .orange
         default:
             if state.hasPrefix("conversing") {
-                return SantaColors.green
+                return Color.green
             }
             return .white
         }
@@ -345,26 +343,26 @@ struct DashboardView: View {
     
     private var queueCard: some View {
         DashboardCard(title: "SAMTALSKÖ", icon: "text.bubble.fill") {
-            VStack(spacing: 12) {
+            VStack(spacing: 16) {
                 // Queue count with visual indicator
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text("Väntande samtal")
-                            .font(.caption)
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                         Text("\(queueCount)")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                            .foregroundColor(queueCount > 0 ? SantaColors.green : .gray)
+                            .font(.system(size: 56, weight: .bold, design: .rounded))
+                            .foregroundColor(queueCount > 0 ? Color.green : .gray)
                     }
                     Spacer()
                     
                     // Queue bar visualization
-                    VStack(spacing: 4) {
+                    VStack(spacing: 6) {
                         ForEach(0..<5, id: \.self) { i in
                             Rectangle()
-                                .fill(i < min(queueCount, 5) ? SantaColors.green : Color.gray.opacity(0.2))
-                                .frame(width: 40, height: 6)
-                                .cornerRadius(3)
+                                .fill(i < min(queueCount, 5) ? Color.green : Color.gray.opacity(0.2))
+                                .frame(width: 60, height: 10)
+                                .cornerRadius(5)
                         }
                     }
                 }
@@ -372,10 +370,10 @@ struct DashboardView: View {
                 // Queue status
                 HStack {
                     Circle()
-                        .fill(queueCount > 0 ? SantaColors.green : Color.orange)
-                        .frame(width: 8, height: 8)
+                        .fill(queueCount > 0 ? Color.green : Color.orange)
+                        .frame(width: 14, height: 14)
                     Text(queueCount > 0 ? "Kö aktiv" : "Kö tom")
-                        .font(.caption)
+                        .font(.system(size: 18, weight: .medium))
                         .foregroundColor(.white.opacity(0.7))
                     Spacer()
                 }
@@ -387,18 +385,18 @@ struct DashboardView: View {
     
     private var generationCard: some View {
         DashboardCard(title: "AI GENERERING", icon: "sparkles") {
-            VStack(spacing: 12) {
+            VStack(spacing: 16) {
                 HStack {
                     Image(systemName: "brain.head.profile")
-                        .font(.title2)
-                        .foregroundColor(SantaColors.gold)
+                        .font(.system(size: 48))
+                        .foregroundColor(SantaColors.primaryRed)
                     
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("Status")
-                            .font(.caption)
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                         Text(stats.generationStatus)
-                            .font(.subheadline.bold())
+                            .font(.system(size: 22, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(2)
                     }
@@ -408,14 +406,137 @@ struct DashboardView: View {
                 // Activity indicator
                 if stats.generationStatus.contains("Generar") {
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: SantaColors.gold))
-                        .scaleEffect(0.8)
+                        .progressViewStyle(CircularProgressViewStyle(tint: SantaColors.primaryRed))
+                        .scaleEffect(1.2)
                 }
             }
         }
     }
     
     // MARK: - Statistics Card
+    
+    // MARK: - Engagement Card
+    
+    private var engagementCard: some View {
+        DashboardCard(title: "ENGAGEMANG", icon: "person.2.fill") {
+            VStack(spacing: 20) {
+                // Engagement levels
+                engagementRow(
+                    icon: "figure.walk.departure",
+                    label: "Passerade förbi",
+                    count: stats.ignoredCount,
+                    color: .gray
+                )
+                
+                engagementRow(
+                    icon: "eye.fill",
+                    label: "Lite nyfikna",
+                    count: stats.partialEngagementCount,
+                    color: .orange
+                )
+                
+                engagementRow(
+                    icon: "star.fill",
+                    label: "Stannade hela vägen",
+                    count: stats.fullEngagementCount,
+                    color: Color.green
+                )
+                
+                Divider()
+                    .background(SantaColors.cardBorder)
+                
+                // Total summary
+                HStack {
+                    Text("Totalt interaktioner")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                    Spacer()
+                    Text("\(stats.totalInteractions)")
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .foregroundColor(SantaColors.primaryRed)
+                }
+            }
+        }
+    }
+    
+    private func engagementRow(icon: String, label: String, count: Int, color: Color) -> some View {
+        HStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 28))
+                .foregroundColor(color)
+                .frame(width: 40)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(.white.opacity(0.8))
+            }
+            
+            Spacer()
+            
+            Text("\(count)")
+                .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
+                .foregroundColor(color)
+        }
+    }
+    
+    // MARK: - Statistics Chart Card
+    
+    private var statisticsChartCard: some View {
+        DashboardCard(title: "SAMTALSTYPER", icon: "chart.bar.fill") {
+            VStack(spacing: 16) {
+                // Chart using Swift Charts
+                Chart {
+                    BarMark(
+                        x: .value("Typ", "Hälsning"),
+                        y: .value("Antal", stats.greetingCount)
+                    )
+                    .foregroundStyle(SantaColors.primaryRed)
+                    
+                    BarMark(
+                        x: .value("Typ", "Pepp"),
+                        y: .value("Antal", stats.peppCount)
+                    )
+                    .foregroundStyle(Color.white)
+                    
+                    BarMark(
+                        x: .value("Typ", "Quiz"),
+                        y: .value("Antal", stats.quizCount)
+                    )
+                    .foregroundStyle(Color.green)
+                    
+                    BarMark(
+                        x: .value("Typ", "Skämt"),
+                        y: .value("Antal", stats.jokeCount)
+                    )
+                    .foregroundStyle(Color.purple)
+                    
+                    BarMark(
+                        x: .value("Typ", "Pekning"),
+                        y: .value("Antal", stats.pointingCount)
+                    )
+                    .foregroundStyle(Color.orange)
+                }
+                .chartXAxis {
+                    AxisMarks { _ in
+                        AxisValueLabel()
+                            .foregroundStyle(.white.opacity(0.7))
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { _ in
+                        AxisGridLine()
+                            .foregroundStyle(.white.opacity(0.2))
+                        AxisValueLabel()
+                            .foregroundStyle(.white.opacity(0.7))
+                            .font(.system(size: 14))
+                    }
+                }
+                .frame(height: 160)
+            }
+        }
+    }
     
     private var statisticsCard: some View {
         DashboardCard(title: "STATISTIK", icon: "chart.bar.fill") {
@@ -424,20 +545,20 @@ struct DashboardView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Totalt samtal")
-                            .font(.caption)
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                         Text("\(stats.totalInteractions)")
-                            .font(.system(size: 32, weight: .bold, design: .rounded))
-                            .foregroundColor(SantaColors.gold)
+                            .font(.system(size: 48, weight: .bold, design: .rounded))
+                            .foregroundColor(SantaColors.primaryRed)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
                         Text("Personer")
-                            .font(.caption)
+                            .font(.system(size: 18, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                         Text("\(stats.peopleEngaged)")
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .foregroundColor(SantaColors.green)
+                            .font(.system(size: 40, weight: .bold, design: .rounded))
+                            .foregroundColor(Color.green)
                     }
                 }
                 
@@ -445,10 +566,10 @@ struct DashboardView: View {
                     .background(SantaColors.cardBorder)
                 
                 // Interaction type breakdown
-                VStack(spacing: 8) {
+                VStack(spacing: 12) {
                     statRow(label: "Hälsningar", count: stats.greetingCount, color: SantaColors.primaryRed)
-                    statRow(label: "Pepp", count: stats.peppCount, color: SantaColors.gold)
-                    statRow(label: "Quiz", count: stats.quizCount, color: SantaColors.green)
+                    statRow(label: "Pepp", count: stats.peppCount, color: SantaColors.white)
+                    statRow(label: "Quiz", count: stats.quizCount, color: Color.green)
                     statRow(label: "Skämt", count: stats.jokeCount, color: .purple)
                     statRow(label: "Pekningar", count: stats.pointingCount, color: .orange)
                 }
@@ -460,13 +581,13 @@ struct DashboardView: View {
         HStack {
             Circle()
                 .fill(color)
-                .frame(width: 8, height: 8)
+                .frame(width: 14, height: 14)
             Text(label)
-                .font(.caption)
+                .font(.system(size: 18, weight: .medium))
                 .foregroundColor(.white.opacity(0.7))
             Spacer()
             Text("\(count)")
-                .font(.caption.bold().monospacedDigit())
+                .font(.system(size: 22, weight: .bold).monospacedDigit())
                 .foregroundColor(.white)
         }
     }
@@ -475,12 +596,12 @@ struct DashboardView: View {
     
     private var qrCodeCard: some View {
         DashboardCard(title: "GITHUB", icon: "qrcode") {
-            VStack(spacing: 12) {
-                QRCodeView(size: 120)
+            VStack(spacing: 16) {
+                QRCodeView(size: 140)
                 
                 Text("pardeike/RoboSanta")
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.5))
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
             }
             .frame(maxWidth: .infinity)
         }
@@ -509,28 +630,28 @@ struct DashboardCard<Content: View>: View {
     @ViewBuilder let content: () -> Content
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             // Header
-            HStack(spacing: 8) {
+            HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.caption.bold())
-                    .foregroundColor(SantaColors.gold)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(SantaColors.primaryRed)
                 Text(title)
-                    .font(.caption.bold())
-                    .foregroundColor(.white.opacity(0.6))
-                    .tracking(1.5)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white.opacity(0.7))
+                    .tracking(2.0)
             }
             
             // Content
             content()
         }
-        .padding(16)
+        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(SantaColors.cardBackground)
-        .cornerRadius(16)
+        .cornerRadius(20)
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(SantaColors.cardBorder, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(SantaColors.cardBorder, lineWidth: 2)
         )
     }
 }
