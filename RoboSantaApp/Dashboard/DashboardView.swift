@@ -119,7 +119,7 @@ struct DashboardView: View {
     // MARK: - Header
     
     private var headerSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             Text("🎅 LEVERANSTOMTE 🎅")
                 .font(.system(size: 72, weight: .black, design: .rounded))
                 .foregroundStyle(
@@ -134,6 +134,7 @@ struct DashboardView: View {
             Text("Ett projekt av LK Arkitektur")
                 .font(.system(size: 28, weight: .medium, design: .rounded))
                 .foregroundColor(SantaColors.white.opacity(0.8))
+                .padding(.bottom, 16)
         }
     }
     
@@ -190,10 +191,12 @@ struct DashboardView: View {
                     servoGauge(label: "KROPP", value: pose.bodyAngle, range: -105...105, unit: "°", color: ServoColor.body)
                     servoGauge(label: "HUVUD", value: pose.headAngle, range: -30...30, unit: "°", color: ServoColor.head)
                 }
+                .padding()
                 HStack(spacing: 16) {
                     servoGauge(label: "V. ARM", value: pose.leftHand * 100, range: 0...100, unit: "%", color: ServoColor.leftArm)
                     servoGauge(label: "H. ARM", value: pose.rightHand * 100, range: 0...100, unit: "%", color: ServoColor.rightArm)
                 }
+                .padding()
             }
         }
     }
@@ -596,14 +599,8 @@ struct DashboardView: View {
     
     private var qrCodeCard: some View {
         DashboardCard(title: "GITHUB", icon: "qrcode") {
-            VStack(spacing: 10) {
-                QRCodeView(size: 100)
-                
-                Text("pardeike/RoboSanta")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
-            }
-            .frame(maxWidth: .infinity)
+            QRCodeView(size: 200)
+                .frame(maxWidth: .infinity)
         }
     }
     

@@ -88,7 +88,7 @@ struct QRCodeView: View {
             }
             
             Text(label)
-                .font(.caption)
+                .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.white.opacity(0.8))
                 .multilineTextAlignment(.center)
         }
