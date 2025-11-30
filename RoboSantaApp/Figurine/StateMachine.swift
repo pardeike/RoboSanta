@@ -25,6 +25,9 @@ final class StateMachine {
         case setIdleBehavior(IdleBehavior)
         case personDetected(relativeOffset: Double, faceYaw: Double? = nil) // -1...+1, 0 is center; faceYaw in degrees
         case personLost
+        case startPointingGesture      // Triggers raise to half position
+        case pointingAttentionDone     // Signal to raise to full position
+        case pointingLectureDone       // Signal to lower
     }
     
     /// Published when person detection state changes.
@@ -169,6 +172,14 @@ final class StateMachine {
             case movingUp
         }
     }
+    private enum RightHandAutoState: Equatable {
+        case lowered
+        case raisingHalf           // Moving to 0.5 (forward point)
+        case holdingHalf           // At 0.5, waiting for external signal
+        case raisingFull           // Moving to 1.0 (up point)
+        case holdingFull           // At 1.0, waiting for external signal
+        case lowering              // Moving back to 0
+    }
     private enum ServoAxis { case head, body }
     
     private struct PatrolState {
@@ -240,6 +251,9 @@ final class StateMachine {
         var leftHandMeasuredAngle: Double?
         var leftHandLastLoggedAngle: Double?
         var rightHandMeasuredAngle: Double?
+        var rightHandAutoState: RightHandAutoState = .lowered
+        var rightHandTargetAngle: Double?
+        var rightHandLastLoggedAngle: Double?
         var idleLeftHandOffset: Double = 0
         var idleRightHandOffset: Double = 0
         var idleLeftHandTargetOffset: Double = 0
@@ -335,6 +349,7 @@ final class StateMachine {
             guard let self else { return }
             self.workerQueue.async {
                 self.behavior.rightHandMeasuredAngle = angle
+                self.handleRightHandPositionUpdate(angle: angle, now: Date())
             }
         }
         bodyDriver.setPositionObserver { [weak self] angle in
@@ -564,6 +579,30 @@ final class StateMachine {
                 }
                 logEvent("tracking.lost")
                 logState("tracking.lost")
+            
+            case .startPointingGesture:
+                if behavior.rightHandAutoState == .lowered {
+                    behavior.rightHandAutoState = .raisingHalf
+                    let halfPosition = configuration.rightHand.logicalRange.midPoint
+                    setRightHandTarget(angle: halfPosition, speed: settings.rightHandRaiseSpeed)
+                    logState("rightHand.raisingHalf")
+                }
+
+            case .pointingAttentionDone:
+                if behavior.rightHandAutoState == .holdingHalf {
+                    behavior.rightHandAutoState = .raisingFull
+                    let fullPosition = configuration.rightHand.logicalRange.upperBound
+                    setRightHandTarget(angle: fullPosition, speed: settings.rightHandRaiseSpeed)
+                    logState("rightHand.raisingFull")
+                }
+
+            case .pointingLectureDone:
+                if behavior.rightHandAutoState == .holdingFull || behavior.rightHandAutoState == .holdingHalf || behavior.rightHandAutoState == .raisingHalf {
+                    behavior.rightHandAutoState = .lowering
+                    let downPosition = configuration.rightHand.logicalRange.lowerBound
+                    setRightHandTarget(angle: downPosition, speed: settings.rightHandLowerSpeed)
+                    logState("rightHand.lowering")
+                }
             }
         }
 
@@ -1453,6 +1492,63 @@ final class StateMachine {
         }
     }
     
+    // MARK: - Right Hand Autopilot (Pointing)
+    
+    private func setRightHandTarget(angle: Double, speed: Double) {
+        behavior.rightHandTargetAngle = angle
+        behavior.rightHandLastLoggedAngle = nil  // Reset so first position update gets logged
+        rightHandDriver.setVelocity(speed)
+        rightHandDriver.move(toLogical: angle)
+        logState("rightHand.target", values: ["angle": angle, "speed": speed])
+    }
+    
+    private func hasReachedRightHandTarget(measured: Double, target: Double) -> Bool {
+        abs(measured - target) <= settings.rightHandPositionTolerance
+    }
+    
+    private func handleRightHandPositionUpdate(angle: Double, now: Date) {
+        guard let target = behavior.rightHandTargetAngle else { return }
+        
+        // Log intermediate positions during movement (every 0.1 change)
+        let logThreshold = 0.1
+        if behavior.rightHandAutoState != .lowered && behavior.rightHandAutoState != .holdingHalf && behavior.rightHandAutoState != .holdingFull {
+            if let lastLogged = behavior.rightHandLastLoggedAngle {
+                if abs(angle - lastLogged) >= logThreshold {
+                    if loggingLevel == .debug {
+                        logState("rightHand.position", values: ["angle": String(format: "%.2f", angle)])
+                    }
+                    behavior.rightHandLastLoggedAngle = angle
+                }
+            } else {
+                if loggingLevel == .debug {
+                    logState("rightHand.position", values: ["angle": String(format: "%.2f", angle)])
+                }
+                behavior.rightHandLastLoggedAngle = angle
+            }
+        }
+        
+        if hasReachedRightHandTarget(measured: angle, target: target) {
+            switch behavior.rightHandAutoState {
+            case .raisingHalf:
+                behavior.rightHandAutoState = .holdingHalf
+                logState("rightHand.holdingHalf")
+                
+            case .raisingFull:
+                behavior.rightHandAutoState = .holdingFull
+                logState("rightHand.holdingFull")
+                
+            case .lowering:
+                behavior.rightHandAutoState = .lowered
+                behavior.rightHandTargetAngle = nil
+                behavior.rightGesture = .down
+                logState("rightHand.lowered")
+                
+            default:
+                break
+            }
+        }
+    }
+    
     private func updateIdleHandOffsets(now: Date, deltaTime: TimeInterval) {
         let offsetRange: ClosedRange<Double> = (-0.05)...0.05
         let pauseRange: ClosedRange<TimeInterval> = 1.0...3.0
@@ -1497,8 +1593,8 @@ final class StateMachine {
             behavior.nextIdleLeftMove = nil
         }
         
-        // Right hand (only when not performing other gestures)
-        if behavior.rightGesture == .down {
+        // Right hand (only when not performing other gestures and not under autopilot control)
+        if behavior.rightGesture == .down && behavior.rightHandAutoState == .lowered {
             if behavior.nextIdleRightMove == nil || now >= (behavior.nextIdleRightMove ?? now) {
                 behavior.idleRightHandTargetOffset = randomValue(in: offsetRange)
                 behavior.nextIdleRightMove = now + randomInterval(in: pauseRange)
@@ -1542,9 +1638,15 @@ final class StateMachine {
     }
     
     private func rightHandValue() -> Double {
+        // Return the actual measured position if available (for smooth animation during autopilot)
+        if let measured = behavior.rightHandMeasuredAngle,
+           behavior.rightHandAutoState != .lowered {
+            return measured
+        }
         let range = configuration.rightHand.logicalRange
         if case .minimalIdle = behavior.idleBehavior,
-           behavior.rightGesture == .down {
+           behavior.rightGesture == .down,
+           behavior.rightHandAutoState == .lowered {
             let value = range.lowerBound + behavior.idleRightHandOffset
             return value.clamped(to: range)
         }
@@ -1562,7 +1664,10 @@ final class StateMachine {
         if behavior.leftHandAutoState == .lowered && behavior.leftHandTargetAngle == nil {
             leftHandDriver.move(toLogical: pose.leftHand)
         }
-        rightHandDriver.move(toLogical: pose.rightHand)
+        // Only apply right hand pose if autopilot is not actively controlling it
+        if behavior.rightHandAutoState == .lowered && behavior.rightHandTargetAngle == nil {
+            rightHandDriver.move(toLogical: pose.rightHand)
+        }
     }
     
     private func clampCamera(_ heading: Double) -> Double { configuration.cameraRange.clamp(heading) }

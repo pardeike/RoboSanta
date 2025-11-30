@@ -95,6 +95,23 @@ let jokeSchema = Model(
     ]
 )
 
+let pointingSchema = Model(
+    name: "Pointing",
+    description: "Din scen: Tomten pekar åt personen för att dela ett kort råd eller en humoristisk varning. Håll det lekfullt!",
+    properties: [
+        Property(
+            name: "attentionPhrase",
+            description: "Mycket kort fras (1-3 ord) för att fånga uppmärksamheten. Exempel: 'Hallå du!', 'Psst!', 'Lyssna!', 'Du där!'",
+            minLength: 2, maxLength: 25, disallowQuestion: true
+        ),
+        Property(
+            name: "lecturePhrase",
+            description: "En kort rekommendation, humoristisk varning eller visdomsord. Något man säger medan man pekar med fingret uppåt. Knyt an till ämnet.",
+            minLength: 15, maxLength: 120
+        ),
+    ]
+)
+
 //
 
 let randomTopicActions = [

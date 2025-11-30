@@ -130,6 +130,20 @@ extension StateMachine {
         /// Typical: 0.01...0.05.
         let leftHandPositionTolerance: Double
 
+        /// Servo velocity (units/s) when raising the right hand.
+        /// Lower = slower, gentler raise; higher = faster response.
+        /// Typical: 50...300 (depends on servo limits).
+        let rightHandRaiseSpeed: Double
+
+        /// Servo velocity (units/s) when lowering the right hand.
+        /// Lower = gentle return; higher = quick drop.
+        /// Typical: 50...200 (depends on servo limits).
+        let rightHandLowerSpeed: Double
+
+        /// Tolerance (in normalized units) for considering right hand servo has reached target.
+        /// Typical: 0.01...0.05.
+        let rightHandPositionTolerance: Double
+
         /// Pause duration (s) when resuming patrol after tracking ends.
         /// Lower = quicker return to scanning; higher = holds final tracking position longer.
         /// Typical: 0.5...3.0 s.
@@ -166,6 +180,9 @@ extension StateMachine {
             leftHandMaxRaisedDuration: 6.0,
             minimumLeftHandCooldown: 4.0, // TODO revert back to 20.0,
             leftHandPositionTolerance: 0.03,
+            rightHandRaiseSpeed: 180,
+            rightHandLowerSpeed: 120,
+            rightHandPositionTolerance: 0.03,
             patrolResumePauseDuration: 1.5,
             figurineConfiguration: .init(
                 leftHand: .defaultLeftHand,
@@ -209,6 +226,9 @@ extension StateMachine {
                 leftHandMaxRaisedDuration: leftHandMaxRaisedDuration,
                 minimumLeftHandCooldown: minimumLeftHandCooldown,
                 leftHandPositionTolerance: leftHandPositionTolerance,
+                rightHandRaiseSpeed: rightHandRaiseSpeed,
+                rightHandLowerSpeed: rightHandLowerSpeed,
+                rightHandPositionTolerance: rightHandPositionTolerance,
                 patrolResumePauseDuration: patrolResumePauseDuration,
                 figurineConfiguration: configuration
             )

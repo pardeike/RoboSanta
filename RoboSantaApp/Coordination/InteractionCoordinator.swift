@@ -356,7 +356,34 @@ final class InteractionCoordinator {
         currentPhraseIndex = 0
         lastLookingTime = nil
         
-        print("🎄 Starting conversation with set: \(set.id)")
+        print("🎄 Starting conversation with set: \(set.id) [type: \(set.type)]")
+        
+        // Handle different interaction types
+        switch set.type {
+        case .pointing:
+            transition(to: .greeting, reason: "starting pointing interaction")
+            isSpeaking = true
+            let success = await playPointingInteraction(set: set)
+            if !success {
+                print("🎄 Pointing interaction failed")
+            }
+            // Pointing has no farewell
+            await cleanupConversation()
+            return
+            
+        case .pepp:
+            // Pepp talk - just start phrase, no farewell
+            transition(to: .greeting, reason: "starting pepp talk")
+            isSpeaking = true
+            _ = await audioPlayer.playStart(of: set)
+            // Pepp has no farewell
+            await cleanupConversation()
+            return
+            
+        default:
+            // Standard flow for greeting, quiz, joke, unknown
+            break
+        }
         
         // Start with greeting
         transition(to: .greeting, reason: "starting conversation")
@@ -405,12 +432,48 @@ final class InteractionCoordinator {
             }
         }
         
-        // Play farewell if person is still around
-        if personTracked || isRecentlyLost() {
+        // Play farewell if person is still around AND set has an end
+        if (personTracked || isRecentlyLost()) && set.hasEnd {
             await playFarewell()
         }
         
         await cleanupConversation()
+    }
+    
+    /// Plays a pointing interaction with synchronized arm gestures.
+    private func playPointingInteraction(set: ConversationSet) async -> Bool {
+        guard let attentionFile = set.attentionFile,
+              let lectureFile = set.lectureFile else {
+            print("🎄 Invalid pointing set - missing files")
+            return false
+        }
+        
+        // Phase 1: Raise hand halfway and play attention phrase
+        stateMachine.send(.startPointingGesture)
+        
+        // Small delay to let the arm start moving
+        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+        
+        // Play attention phrase while arm is rising/holding
+        let attentionSuccess = await audioPlayer.play(attentionFile)
+        guard attentionSuccess && !Task.isCancelled else {
+            stateMachine.send(.pointingLectureDone) // Abort - lower hand
+            return false
+        }
+        
+        // Phase 2: Raise hand fully and play lecture phrase
+        stateMachine.send(.pointingAttentionDone)
+        
+        // Small delay for transition
+        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+        
+        // Play lecture phrase while arm is raised
+        let lectureSuccess = await audioPlayer.play(lectureFile)
+        
+        // Phase 3: Lower hand
+        stateMachine.send(.pointingLectureDone)
+        
+        return lectureSuccess
     }
     
     private func playMiddlePhrases(set: ConversationSet) async -> Bool {
