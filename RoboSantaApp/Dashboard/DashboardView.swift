@@ -27,6 +27,7 @@ struct DashboardView: View {
     @State private var stats = DashboardStats.shared
     @State private var sessionTime = ""
     @State private var queueCount: Int = 0
+    @State private var upcomingTopics: [String] = []
     @State private var interactionState: InteractionState = .idle
     @State private var isSpeaking: Bool = false
     @State private var pulseAnimation = false
@@ -141,10 +142,11 @@ struct DashboardView: View {
     private var cameraPreviewCard: some View {
         DashboardCard(title: "KAMERAVY", icon: "camera.fill") {
             ZStack {
-                // Blurred camera preview
+                // Blurred camera preview with 16:9 aspect ratio
                 BlurredCameraPreview()
                     .environmentObject(visionSource)
                     .cornerRadius(12)
+                    .aspectRatio(16/9, contentMode: .fit)
                 
                 // Face detection overlay is handled by VisionDetectionSource
                 
@@ -156,27 +158,26 @@ struct DashboardView: View {
                             HStack(spacing: 10) {
                                 Circle()
                                     .fill(Color.green)
-                                    .frame(width: 16, height: 16)
+                                    .frame(width: 14, height: 14)
                                     .scaleEffect(pulseAnimation ? 1.2 : 1.0)
                                     .animation(
                                         .easeInOut(duration: 0.6).repeatForever(autoreverses: true),
                                         value: pulseAnimation
                                     )
                                 Text("PERSON UPPTÄCKT")
-                                    .font(.system(size: 20, weight: .bold))
+                                    .font(.system(size: 16, weight: .bold))
                                     .foregroundColor(.white)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
                             .background(Color.black.opacity(0.7))
-                            .cornerRadius(10)
-                            .padding(12)
+                            .cornerRadius(8)
+                            .padding(10)
                         }
                         Spacer()
                     }
                 }
             }
-            .frame(minHeight: 250)
         }
     }
     
@@ -184,48 +185,48 @@ struct DashboardView: View {
     
     private var servoInfoCard: some View {
         DashboardCard(title: "SERVOPOSITONER", icon: "gearshape.2.fill") {
-            VStack(spacing: 20) {
-                HStack(spacing: 24) {
+            VStack(spacing: 12) {
+                HStack(spacing: 16) {
                     servoGauge(label: "KROPP", value: pose.bodyAngle, range: -105...105, unit: "°", color: ServoColor.body)
                     servoGauge(label: "HUVUD", value: pose.headAngle, range: -30...30, unit: "°", color: ServoColor.head)
                 }
-                HStack(spacing: 24) {
-                    servoGauge(label: "VÄNSTER ARM", value: pose.leftHand * 100, range: 0...100, unit: "%", color: ServoColor.leftArm)
-                    servoGauge(label: "HÖGER ARM", value: pose.rightHand * 100, range: 0...100, unit: "%", color: ServoColor.rightArm)
+                HStack(spacing: 16) {
+                    servoGauge(label: "V. ARM", value: pose.leftHand * 100, range: 0...100, unit: "%", color: ServoColor.leftArm)
+                    servoGauge(label: "H. ARM", value: pose.rightHand * 100, range: 0...100, unit: "%", color: ServoColor.rightArm)
                 }
             }
         }
     }
     
     private func servoGauge(label: String, value: Double, range: ClosedRange<Double>, unit: String, color: Color) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 6) {
             Text(label)
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundColor(.white.opacity(0.7))
             
             ZStack {
                 Circle()
-                    .stroke(color.opacity(0.2), lineWidth: 12)
+                    .stroke(color.opacity(0.2), lineWidth: 10)
                 
                 Circle()
                     .trim(from: 0, to: normalizedValue(value, in: range))
                     .stroke(
                         LinearGradient(colors: [color, color.opacity(0.6)], startPoint: .top, endPoint: .bottom),
-                        style: StrokeStyle(lineWidth: 12, lineCap: .round)
+                        style: StrokeStyle(lineWidth: 10, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
                     .animation(.easeOut(duration: 0.3), value: value)
                 
-                VStack(spacing: 2) {
+                VStack(spacing: 1) {
                     Text(String(format: "%.1f", value))
-                        .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundColor(.white)
                     Text(unit)
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.6))
                 }
             }
-            .frame(width: 110, height: 110)
+            .frame(width: 88, height: 88)
         }
         .frame(maxWidth: .infinity)
     }
@@ -239,51 +240,48 @@ struct DashboardView: View {
     
     private var stateCard: some View {
         DashboardCard(title: "TILLSTÅND", icon: "cpu.fill") {
-            VStack(spacing: 20) {
+            VStack(spacing: 12) {
                 // Current state display
                 HStack {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("Aktuellt läge")
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                         Text(stateDisplayName(stats.currentStateName))
-                            .font(.system(size: 32, weight: .bold))
+                            .font(.system(size: 24, weight: .bold))
                             .foregroundColor(stateColor(stats.currentStateName))
                     }
                     Spacer()
                     stateIcon(stats.currentStateName)
-                        .font(.system(size: 56))
+                        .font(.system(size: 44))
                         .foregroundColor(stateColor(stats.currentStateName))
                 }
                 
                 Divider()
                     .background(SantaColors.cardBorder)
                 
-                // Speaking indicator
+                // Speaking indicator and session time in one row
                 HStack {
                     Circle()
                         .fill(isSpeaking ? Color.green : Color.gray.opacity(0.3))
-                        .frame(width: 20, height: 20)
+                        .frame(width: 14, height: 14)
                         .scaleEffect(isSpeaking && pulseAnimation ? 1.3 : 1.0)
                         .animation(
                             isSpeaking ? .easeInOut(duration: 0.5).repeatForever(autoreverses: true) : .default,
                             value: pulseAnimation
                         )
                     Text(isSpeaking ? "TALAR" : "TYST")
-                        .font(.system(size: 22, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.white.opacity(0.8))
+                    
                     Spacer()
-                }
-                
-                // Session time
-                HStack {
+                    
                     Image(systemName: "clock.fill")
-                        .font(.system(size: 24))
+                        .font(.system(size: 16))
                         .foregroundColor(SantaColors.primaryRed.opacity(0.8))
-                    Text("Session: \(sessionTime)")
-                        .font(.system(size: 20, weight: .medium))
+                    Text(sessionTime)
+                        .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.white.opacity(0.7))
-                    Spacer()
                 }
             }
         }
@@ -343,39 +341,43 @@ struct DashboardView: View {
     
     private var queueCard: some View {
         DashboardCard(title: "SAMTALSKÖ", icon: "text.bubble.fill") {
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 // Queue count with visual indicator
                 HStack {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Väntande samtal")
-                            .font(.system(size: 18, weight: .medium))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Väntande")
+                            .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                         Text("\(queueCount)")
-                            .font(.system(size: 56, weight: .bold, design: .rounded))
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
                             .foregroundColor(queueCount > 0 ? Color.green : .gray)
                     }
                     Spacer()
                     
                     // Queue bar visualization
-                    VStack(spacing: 6) {
+                    VStack(spacing: 4) {
                         ForEach(0..<5, id: \.self) { i in
                             Rectangle()
                                 .fill(i < min(queueCount, 5) ? Color.green : Color.gray.opacity(0.2))
-                                .frame(width: 60, height: 10)
-                                .cornerRadius(5)
+                                .frame(width: 50, height: 8)
+                                .cornerRadius(4)
                         }
                     }
                 }
                 
-                // Queue status
-                HStack {
-                    Circle()
-                        .fill(queueCount > 0 ? Color.green : Color.orange)
-                        .frame(width: 14, height: 14)
-                    Text(queueCount > 0 ? "Kö aktiv" : "Kö tom")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(.white.opacity(0.7))
-                    Spacer()
+                // Upcoming topics
+                if !upcomingTopics.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Ämnen:")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                        Text(upcomingTopics.prefix(3).joined(separator: ", "))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                            .lineLimit(2)
+                            .truncationMode(.tail)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -385,18 +387,18 @@ struct DashboardView: View {
     
     private var generationCard: some View {
         DashboardCard(title: "AI GENERERING", icon: "sparkles") {
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 HStack {
                     Image(systemName: "brain.head.profile")
-                        .font(.system(size: 48))
+                        .font(.system(size: 40))
                         .foregroundColor(SantaColors.primaryRed)
                     
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("Status")
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                         Text(stats.generationStatus)
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 18, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(2)
                     }
@@ -407,7 +409,7 @@ struct DashboardView: View {
                 if stats.generationStatus.contains("Generar") {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: SantaColors.primaryRed))
-                        .scaleEffect(1.2)
+                        .scaleEffect(1.0)
                 }
             }
         }
@@ -419,7 +421,7 @@ struct DashboardView: View {
     
     private var engagementCard: some View {
         DashboardCard(title: "ENGAGEMANG", icon: "person.2.fill") {
-            VStack(spacing: 20) {
+            VStack(spacing: 12) {
                 // Engagement levels
                 engagementRow(
                     icon: "figure.walk.departure",
@@ -447,12 +449,12 @@ struct DashboardView: View {
                 
                 // Total summary
                 HStack {
-                    Text("Totalt interaktioner")
-                        .font(.system(size: 18, weight: .medium))
+                    Text("Totalt")
+                        .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.white.opacity(0.7))
                     Spacer()
                     Text("\(stats.totalInteractions)")
-                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
                         .foregroundColor(SantaColors.primaryRed)
                 }
             }
@@ -460,22 +462,20 @@ struct DashboardView: View {
     }
     
     private func engagementRow(icon: String, label: String, count: Int, color: Color) -> some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 28))
+                .font(.system(size: 22))
                 .foregroundColor(color)
-                .frame(width: 40)
+                .frame(width: 30)
             
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(.white.opacity(0.8))
-            }
+            Text(label)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.white.opacity(0.8))
             
             Spacer()
             
             Text("\(count)")
-                .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
+                .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundColor(color)
         }
     }
@@ -484,7 +484,7 @@ struct DashboardView: View {
     
     private var statisticsChartCard: some View {
         DashboardCard(title: "SAMTALSTYPER", icon: "chart.bar.fill") {
-            VStack(spacing: 16) {
+            VStack(spacing: 8) {
                 // Chart using Swift Charts
                 Chart {
                     BarMark(
@@ -521,7 +521,7 @@ struct DashboardView: View {
                     AxisMarks { _ in
                         AxisValueLabel()
                             .foregroundStyle(.white.opacity(0.7))
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 12, weight: .medium))
                     }
                 }
                 .chartYAxis {
@@ -530,10 +530,10 @@ struct DashboardView: View {
                             .foregroundStyle(.white.opacity(0.2))
                         AxisValueLabel()
                             .foregroundStyle(.white.opacity(0.7))
-                            .font(.system(size: 14))
+                            .font(.system(size: 12))
                     }
                 }
-                .frame(height: 160)
+                .frame(height: 120)
             }
         }
     }
@@ -596,11 +596,11 @@ struct DashboardView: View {
     
     private var qrCodeCard: some View {
         DashboardCard(title: "GITHUB", icon: "qrcode") {
-            VStack(spacing: 16) {
-                QRCodeView(size: 140)
+            VStack(spacing: 10) {
+                QRCodeView(size: 100)
                 
                 Text("pardeike/RoboSanta")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.white.opacity(0.6))
             }
             .frame(maxWidth: .infinity)
@@ -615,9 +615,22 @@ struct DashboardView: View {
     
     private func updateQueueInfo() {
         queueCount = queueManager.queueCount
+        // Get upcoming topics from queue
+        upcomingTopics = queueManager.availableSets.prefix(3).map { interactionTypeName($0.type) }
         if let ic = interaction {
             stats.updateState(ic.state)
             isSpeaking = ic.isSpeaking
+        }
+    }
+    
+    private func interactionTypeName(_ type: InteractionType) -> String {
+        switch type {
+        case .greeting: return "Hälsning"
+        case .pepp: return "Pepp"
+        case .quiz: return "Quiz"
+        case .joke: return "Skämt"
+        case .pointing: return "Pekning"
+        case .unknown: return "Okänd"
         }
     }
 }
@@ -630,28 +643,28 @@ struct DashboardCard<Content: View>: View {
     @ViewBuilder let content: () -> Content
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
             // Header
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundColor(SantaColors.primaryRed)
                 Text(title)
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.white.opacity(0.7))
-                    .tracking(2.0)
+                    .tracking(1.5)
             }
             
             // Content
             content()
         }
-        .padding(20)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(SantaColors.cardBackground)
-        .cornerRadius(20)
+        .cornerRadius(16)
         .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(SantaColors.cardBorder, lineWidth: 2)
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(SantaColors.cardBorder, lineWidth: 1.5)
         )
     }
 }

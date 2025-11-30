@@ -329,12 +329,14 @@ final class InteractionCoordinator {
         // Clean up and return to appropriate state
         if let set = currentSet {
             queueManager.moveToCompleted(set)
-            currentSet = nil
             
             // Record partial engagement (person left during interaction)
             Task { @MainActor in
+                DashboardStats.shared.recordInteraction(type: set.type)
                 DashboardStats.shared.recordEngagement(completed: false)
             }
+            
+            currentSet = nil
         }
         
         currentSetId = nil
@@ -465,14 +467,14 @@ final class InteractionCoordinator {
         if !attentive {
             print("🎄 Person not engaged after greeting; skipping conversation")
             await playFarewell()
-            await cleanupConversation()
+            await cleanupConversation(completed: false)
             return
         }
         
         if pendingLossAfterCurrentPhrase {
             print("🚪 Person already lost during greeting; ending conversation after greeting")
             pendingLossAfterCurrentPhrase = false
-            await cleanupConversation()
+            await cleanupConversation(completed: false)
             return
         }
         
@@ -480,7 +482,7 @@ final class InteractionCoordinator {
         if !set.middleFiles.isEmpty {
             let shouldContinue = await playMiddlePhrases(set: set)
             if !shouldContinue {
-                await cleanupConversation()
+                await cleanupConversation(completed: false)
                 return
             }
         }
@@ -490,7 +492,7 @@ final class InteractionCoordinator {
             await playFarewell()
         }
         
-        await cleanupConversation()
+        await cleanupConversation(completed: true)
     }
     
     /// Plays a pointing interaction with synchronized arm gestures.
@@ -581,7 +583,7 @@ final class InteractionCoordinator {
         }
     }
     
-    private func cleanupConversation() async {
+    private func cleanupConversation(completed: Bool = true) async {
         if let set = currentSet {
             queueManager.moveToCompleted(set)
             print("🎄 Moved set \(set.id) to completed")
@@ -589,8 +591,8 @@ final class InteractionCoordinator {
             // Record interaction in dashboard stats
             Task { @MainActor in
                 DashboardStats.shared.recordInteraction(type: set.type)
-                // Person stayed for full interaction
-                DashboardStats.shared.recordEngagement(completed: true)
+                // Record engagement level based on completion status
+                DashboardStats.shared.recordEngagement(completed: completed)
             }
         }
         
