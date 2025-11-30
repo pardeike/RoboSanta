@@ -40,6 +40,7 @@ final class InteractionCoordinator {
     private var trackingStartTime: Date? = nil
     private var lastLoggedQueueCount: Int? = nil
     private var pendingLossAfterCurrentPhrase: Bool = false
+    private var wavingCurrentlySuppressed: Bool = false
     
     // MARK: - Current Conversation
     
@@ -211,6 +212,21 @@ final class InteractionCoordinator {
         }
     }
     
+    /// Checks the next queued interaction and suppresses waving if it's a pointing type.
+    /// This prevents both arms from going up simultaneously.
+    /// Only sends events when the suppression state actually changes.
+    private func updateWavingSuppressionForNextInteraction() {
+        let shouldSuppress = queueManager.peekOldest()?.type == .pointing
+        if shouldSuppress != wavingCurrentlySuppressed {
+            wavingCurrentlySuppressed = shouldSuppress
+            if shouldSuppress {
+                stateMachine.send(.suppressWaving)
+            } else {
+                stateMachine.send(.allowWaving)
+            }
+        }
+    }
+    
     // MARK: - Coordination Loop
     
     private func runCoordinationLoop() async {
@@ -257,6 +273,8 @@ final class InteractionCoordinator {
         if queueManager.hasContent {
             transition(to: .patrolling, reason: "queue has content")
             updateIdleBehavior()
+            // Preemptively suppress waving if next interaction is pointing
+            updateWavingSuppressionForNextInteraction()
         }
     }
     
@@ -265,8 +283,16 @@ final class InteractionCoordinator {
         if !queueManager.hasContent {
             transition(to: .idle, reason: "queue empty")
             updateIdleBehavior()
+            // Re-enable waving when idle
+            if wavingCurrentlySuppressed {
+                wavingCurrentlySuppressed = false
+                stateMachine.send(.allowWaving)
+            }
             return
         }
+        
+        // Keep waving suppression in sync with the next interaction type
+        updateWavingSuppressionForNextInteraction()
         
         // Check for engaged person
         if isPersonPresentForGreeting() {
@@ -356,7 +382,45 @@ final class InteractionCoordinator {
         currentPhraseIndex = 0
         lastLookingTime = nil
         
-        print("🎄 Starting conversation with set: \(set.id)")
+        print("🎄 Starting conversation with set: \(set.id) [type: \(set.type)]")
+        
+        // Handle different interaction types
+        switch set.type {
+        case .pointing:
+            // Waving should already be suppressed by updateWavingSuppressionForNextInteraction()
+            // but ensure it's suppressed as a safety measure
+            if !wavingCurrentlySuppressed {
+                wavingCurrentlySuppressed = true
+                stateMachine.send(.suppressWaving)
+            }
+            transition(to: .greeting, reason: "starting pointing interaction")
+            isSpeaking = true
+            let success = await playPointingInteraction(set: set)
+            if !success {
+                print("🎄 Pointing interaction failed")
+            }
+            // Pointing has no farewell
+            await cleanupConversation()
+            return
+            
+        case .pepp:
+            // Pepp talk - just start phrase, no farewell
+            transition(to: .greeting, reason: "starting pepp talk")
+            isSpeaking = true
+            _ = await audioPlayer.playStart(of: set)
+            // Pepp has no farewell
+            await cleanupConversation()
+            return
+            
+        default:
+            // Standard flow for greeting, quiz, joke, unknown
+            // Ensure waving is allowed for non-pointing interactions
+            if wavingCurrentlySuppressed {
+                wavingCurrentlySuppressed = false
+                stateMachine.send(.allowWaving)
+            }
+            break
+        }
         
         // Start with greeting
         transition(to: .greeting, reason: "starting conversation")
@@ -405,12 +469,50 @@ final class InteractionCoordinator {
             }
         }
         
-        // Play farewell if person is still around
-        if personTracked || isRecentlyLost() {
+        // Play farewell if person is still around AND set has an end
+        if (personTracked || isRecentlyLost()) && set.hasEnd {
             await playFarewell()
         }
         
         await cleanupConversation()
+    }
+    
+    /// Plays a pointing interaction with synchronized arm gestures.
+    private func playPointingInteraction(set: ConversationSet) async -> Bool {
+        guard let attentionFile = set.attentionFile,
+              let lectureFile = set.lectureFile else {
+            print("🎄 Invalid pointing set - missing files")
+            return false
+        }
+        
+        // Phase 1: Raise hand halfway and play attention phrase
+        stateMachine.send(.startPointingGesture)
+        
+        // Small delay to let the arm start moving
+        let armStartDelayNanos = UInt64(config.pointingArmStartDelaySeconds * 1_000_000_000)
+        try? await Task.sleep(nanoseconds: armStartDelayNanos)
+        
+        // Play attention phrase while arm is rising/holding
+        let attentionSuccess = await audioPlayer.play(attentionFile)
+        guard attentionSuccess && !Task.isCancelled else {
+            stateMachine.send(.pointingLectureDone) // Abort - lower hand
+            return false
+        }
+        
+        // Phase 2: Raise hand fully and play lecture phrase
+        stateMachine.send(.pointingAttentionDone)
+        
+        // Small delay for transition
+        let armTransitionDelayNanos = UInt64(config.pointingArmTransitionDelaySeconds * 1_000_000_000)
+        try? await Task.sleep(nanoseconds: armTransitionDelayNanos)
+        
+        // Play lecture phrase while arm is raised
+        let lectureSuccess = await audioPlayer.play(lectureFile)
+        
+        // Phase 3: Lower hand
+        stateMachine.send(.pointingLectureDone)
+        
+        return lectureSuccess
     }
     
     private func playMiddlePhrases(set: ConversationSet) async -> Bool {
@@ -478,8 +580,15 @@ final class InteractionCoordinator {
         updateQueueState()
         if queueManager.hasContent {
             transition(to: .patrolling, reason: "conversation complete, queue has content")
+            // Update waving suppression based on the next interaction
+            updateWavingSuppressionForNextInteraction()
         } else {
             transition(to: .idle, reason: "conversation complete, queue empty")
+            // Allow waving when idle with empty queue
+            if wavingCurrentlySuppressed {
+                wavingCurrentlySuppressed = false
+                stateMachine.send(.allowWaving)
+            }
         }
         
         updateIdleBehavior()

@@ -163,6 +163,7 @@ final class SpeechQueueManager {
             let inProgressSet = ConversationSet(
                 id: oldest.id,
                 folderURL: inProgressURL,
+                type: oldest.type,
                 startFile: inProgressURL.appendingPathComponent("start.wav"),
                 middleFiles: oldest.middleFiles.map { originalURL in
                     inProgressURL.appendingPathComponent(originalURL.lastPathComponent)
@@ -340,9 +341,10 @@ final class SpeechQueueManager {
 
 extension ConversationSet {
     /// Internal initializer for creating sets with known values (used by SpeechQueueManager).
-    init(id: String, folderURL: URL, startFile: URL, middleFiles: [URL], endFile: URL, createdAt: Date) {
+    init(id: String, folderURL: URL, type: InteractionType, startFile: URL, middleFiles: [URL], endFile: URL, createdAt: Date) {
         self.id = id
         self.folderURL = folderURL
+        self.type = type
         self.startFile = startFile
         self.middleFiles = middleFiles
         self.endFile = endFile

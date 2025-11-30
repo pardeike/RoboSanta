@@ -17,6 +17,7 @@ Svara endast med JSON som matchar schemat.
     let peppTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten lyfter stämningen på ett personligt sätt.")
     let quizTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten ställer en ultrakort fråga med tre svarsalternativ.")
     let jokeTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten antyder en smakfull hemlighet och ger en stilren komplimang.")
+    let pointingTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten pekar åt personen för att ge ett kort råd eller en skämtsam varning.")
     
     let thinker: Think = AppleIntelligence()
     // static let thinker: Think = Koala()
@@ -100,21 +101,23 @@ Svara endast med JSON som matchar schemat.
             return false
         }
         
-        let interactionType = Int.random(in: 0...3)
+        // Number of interaction types: 0=pepp, 1=greeting, 2=quiz, 3=joke, 4=pointing
+        let maxInteractionType = 4
+        let interactionType = Int.random(in: 0...maxInteractionType)
         var interactionName = "unknown"
         var success = false
         
         switch interactionType {
         case 0:
-            // Pepp Talk - simple single phrase (start + end only)
+            // Pepp Talk - simple single phrase, no farewell needed
             interactionName = "pepp"
             print("🧠 Generating Pepp Talk (\(randomTopic))")
             struct PeppOut: Decodable { let happyPhrase: String }
             do {
                 let r: PeppOut = try await thinker.generate(template: peppTemplate, topicAction: randomTopicAction, topic: randomTopic, model: peppTalkSchema, options: opts)
-                // For simple pepp talk, use happy phrase as both start and end
+                try writeTypeFile("pepp", to: setFolder)
                 await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.happyPhrase)
-                await generateTTSToFile(setFolder.appendingPathComponent("end.wav"), "Ha det bra!")
+                // No end.wav - pepp talks don't have farewells
                 success = true
             } catch {
                 print("🧠 Pepp generation failed: \(error)")
@@ -127,6 +130,7 @@ Svara endast med JSON som matchar schemat.
             struct GreetOut: Decodable { let helloPhrase, conversationPhrase, goodbyePhrase: String }
             do {
                 let r: GreetOut = try await thinker.generate(template: passByTemplate, topicAction: randomTopicAction, topic: randomTopic, model: passByAndGreetSchema, options: opts)
+                try writeTypeFile("greeting", to: setFolder)
                 await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
                 await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), r.conversationPhrase)
                 await generateTTSToFile(setFolder.appendingPathComponent("end.wav"), r.goodbyePhrase)
@@ -145,6 +149,7 @@ Svara endast med JSON som matchar schemat.
                     let (q, a1, a2, a3) = fixQuiz(r)
                     if q.isEmpty || Set([a1,a2,a3]).count < 3 { continue }
                     
+                    try writeTypeFile("quiz", to: setFolder)
                     await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
                     await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), q)
                     await generateTTSToFile(setFolder.appendingPathComponent("middle2.wav"), "A: " + a1)
@@ -166,6 +171,7 @@ Svara endast med JSON som matchar schemat.
             struct JokeOut: Decodable { let helloPhrase, secret, compliment, goodbyePhrase: String }
             do {
                 let r: JokeOut = try await thinker.generate(template: jokeTemplate, topicAction: randomTopicAction, topic: randomTopic, model: jokeSchema, options: opts)
+                try writeTypeFile("joke", to: setFolder)
                 await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
                 await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), r.secret)
                 await generateTTSToFile(setFolder.appendingPathComponent("middle2.wav"), r.compliment)
@@ -173,6 +179,21 @@ Svara endast med JSON som matchar schemat.
                 success = true
             } catch {
                 print("🧠 Joke generation failed: \(error)")
+            }
+        
+        case 4:
+            // Pointing - point-and-lecture format
+            interactionName = "pointing"
+            print("🧠 Generating Pointing (\(randomTopic))")
+            struct PointOut: Decodable { let attentionPhrase, lecturePhrase: String }
+            do {
+                let r: PointOut = try await thinker.generate(template: pointingTemplate, topicAction: randomTopicAction, topic: randomTopic, model: pointingSchema, options: opts)
+                try writeTypeFile("pointing", to: setFolder)
+                await generateTTSToFile(setFolder.appendingPathComponent("attention.wav"), r.attentionPhrase)
+                await generateTTSToFile(setFolder.appendingPathComponent("lecture.wav"), r.lecturePhrase)
+                success = true
+            } catch {
+                print("🧠 Pointing generation failed: \(error)")
             }
             
         default:
@@ -192,6 +213,12 @@ Svara endast med JSON som matchar schemat.
         }
         
         return success
+    }
+    
+    /// Writes the interaction type to type.txt in the conversation set folder.
+    private func writeTypeFile(_ type: String, to folder: URL) throws {
+        let typeFile = folder.appendingPathComponent("type.txt")
+        try type.write(to: typeFile, atomically: true, encoding: .utf8)
     }
     
     /// Generates TTS audio and saves directly to a file.

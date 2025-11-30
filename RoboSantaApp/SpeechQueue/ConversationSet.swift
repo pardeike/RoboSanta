@@ -3,6 +3,16 @@
 
 import Foundation
 
+/// Types of interactions supported by the conversation system.
+enum InteractionType: String, Sendable {
+    case greeting   // Standard greeting with start/middle/end
+    case pepp       // Single phrase, no farewell needed
+    case quiz       // Quiz format
+    case joke       // Joke format
+    case pointing   // Point-and-lecture format
+    case unknown    // Fallback for legacy sets without type.txt
+}
+
 /// Represents a validated conversation set stored on the filesystem.
 /// Each set consists of start.wav, optional middle*.wav files, and end.wav.
 struct ConversationSet: Identifiable, Equatable, Sendable {
@@ -12,20 +22,49 @@ struct ConversationSet: Identifiable, Equatable, Sendable {
     /// Full path to the conversation set folder
     let folderURL: URL
     
-    /// Path to the start phrase audio file
+    /// The interaction type of this set
+    let type: InteractionType
+    
+    /// Path to the start phrase audio file.
+    /// Note: For pointing type interactions, use `attentionFile` instead.
     let startFile: URL
     
     /// Paths to middle phrase audio files (sorted: middle1.wav, middle2.wav, ...)
     let middleFiles: [URL]
     
-    /// Path to the end phrase audio file
+    /// Path to the end phrase audio file.
+    /// Note: For pepp and pointing types, check `hasEnd` before using this file.
     let endFile: URL
     
     /// Timestamp when this set was created (parsed from folder name)
     let createdAt: Date
     
     /// Total number of phrases in this set
-    var totalPhrases: Int { 1 + middleFiles.count + 1 }
+    var totalPhrases: Int { 1 + middleFiles.count + (hasEnd ? 1 : 0) }
+    
+    /// Path to attention phrase audio (pointing type only)
+    var attentionFile: URL? {
+        guard type == .pointing else { return nil }
+        let url = folderURL.appendingPathComponent("attention.wav")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+    
+    /// Path to lecture phrase audio (pointing type only)
+    var lectureFile: URL? {
+        guard type == .pointing else { return nil }
+        let url = folderURL.appendingPathComponent("lecture.wav")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+    
+    /// Whether this set has a farewell/end phrase
+    var hasEnd: Bool {
+        switch type {
+        case .pepp, .pointing:
+            return false
+        default:
+            return FileManager.default.fileExists(atPath: endFile.path)
+        }
+    }
     
     /// Creates a ConversationSet by validating a folder's contents.
     /// Returns nil if the folder doesn't contain valid conversation files.
@@ -47,13 +86,40 @@ struct ConversationSet: Identifiable, Equatable, Sendable {
             return nil
         }
         
-        // Validate required files exist
+        // Read interaction type from type.txt if it exists
+        let typeFileURL = folderURL.appendingPathComponent("type.txt")
+        let interactionType: InteractionType
+        if let typeString = try? String(contentsOf: typeFileURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+           let parsed = InteractionType(rawValue: typeString) {
+            interactionType = parsed
+        } else {
+            interactionType = .unknown
+        }
+        
+        // Validate files based on interaction type
         let startURL = folderURL.appendingPathComponent("start.wav")
         let endURL = folderURL.appendingPathComponent("end.wav")
+        let attentionURL = folderURL.appendingPathComponent("attention.wav")
+        let lectureURL = folderURL.appendingPathComponent("lecture.wav")
         
-        guard fileManager.fileExists(atPath: startURL.path),
-              fileManager.fileExists(atPath: endURL.path) else {
-            return nil
+        switch interactionType {
+        case .pointing:
+            // Pointing type requires attention.wav and lecture.wav instead of start/end
+            guard fileManager.fileExists(atPath: attentionURL.path),
+                  fileManager.fileExists(atPath: lectureURL.path) else {
+                return nil
+            }
+        case .pepp:
+            // Pepp type only requires start.wav, no end.wav
+            guard fileManager.fileExists(atPath: startURL.path) else {
+                return nil
+            }
+        default:
+            // Legacy/standard types require start.wav and end.wav
+            guard fileManager.fileExists(atPath: startURL.path),
+                  fileManager.fileExists(atPath: endURL.path) else {
+                return nil
+            }
         }
         
         // Find middle files (middle1.wav, middle2.wav, ..., middleN.wav)
@@ -74,6 +140,7 @@ struct ConversationSet: Identifiable, Equatable, Sendable {
         
         self.id = folderName
         self.folderURL = folderURL
+        self.type = interactionType
         self.startFile = startURL
         self.middleFiles = middleURLs
         self.endFile = endURL
