@@ -384,6 +384,11 @@ final class InteractionCoordinator {
         currentPhraseIndex = 0
         lastLookingTime = nil
         
+        // Record person engagement in dashboard stats
+        Task { @MainActor in
+            DashboardStats.shared.recordPersonEngaged()
+        }
+        
         print("🎄 Starting conversation with set: \(set.id) [type: \(set.type)]")
         
         // Handle different interaction types
@@ -571,6 +576,11 @@ final class InteractionCoordinator {
         if let set = currentSet {
             queueManager.moveToCompleted(set)
             print("🎄 Moved set \(set.id) to completed")
+            
+            // Record interaction in dashboard stats
+            Task { @MainActor in
+                DashboardStats.shared.recordInteraction(type: set.type)
+            }
         }
         
         currentSet = nil

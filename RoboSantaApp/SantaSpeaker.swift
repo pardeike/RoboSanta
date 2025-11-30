@@ -70,6 +70,9 @@ Svara endast med JSON som matchar schemat.
             
             if queueManager.shouldPauseGeneration {
                 print("🎅 SantaSpeaker: Queue full (\(queueManager.queueCount) sets), waiting...")
+                await MainActor.run {
+                    DashboardStats.shared.updateGenerationStatus("Kö full, väntar...")
+                }
                 let pauseNanos = UInt64(queueConfig.queueFullCheckIntervalSeconds) * 1_000_000_000
                 try? await Task.sleep(nanoseconds: pauseNanos)
                 continue
@@ -80,6 +83,9 @@ Svara endast med JSON som matchar schemat.
             
             // Throttle generation
             if queueConfig.generationThrottleSeconds > 0 {
+                await MainActor.run {
+                    DashboardStats.shared.updateGenerationStatus("Väntar på nästa...")
+                }
                 let throttleNanos = UInt64(queueConfig.generationThrottleSeconds) * 1_000_000_000
                 try? await Task.sleep(nanoseconds: throttleNanos)
             }
@@ -109,6 +115,13 @@ Svara endast med JSON som matchar schemat.
         let interactionType = Int.random(in: 0...maxInteractionType)
         var interactionName = "unknown"
         var success = false
+        
+        // Update dashboard with generation status
+        let generationNames = ["Pepp", "Hälsning", "Quiz", "Skämt", "Pekning"]
+        let statusText = "Genererar \(generationNames[interactionType])..."
+        await MainActor.run {
+            DashboardStats.shared.updateGenerationStatus(statusText)
+        }
         
         switch interactionType {
         case 0:
@@ -209,12 +222,18 @@ Svara endast med JSON som matchar schemat.
         if !success {
             try? FileManager.default.removeItem(at: setFolder)
             print("🎅 SantaSpeaker: Generation failed for set \(timestamp) [\(interactionName)]")
+            await MainActor.run {
+                DashboardStats.shared.updateGenerationStatus("Generering misslyckades")
+            }
         }
         
         // Refresh queue count and log the updated size
         let newCount = queueManager.scanQueue().count
         if success {
             print("🎅 SantaSpeaker: Generated set \(timestamp) [\(interactionName)] (queue now \(newCount))")
+            await MainActor.run {
+                DashboardStats.shared.updateGenerationStatus("Klar (\(newCount) i kö)")
+            }
         }
         
         return success
