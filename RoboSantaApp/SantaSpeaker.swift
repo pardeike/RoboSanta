@@ -119,9 +119,8 @@ Svara endast med JSON som matchar schemat.
             do {
                 let r: PeppOut = try await thinker.generate(template: peppTemplate, topicAction: randomTopicAction, topic: randomTopic, model: peppTalkSchema, options: opts)
                 try writeTypeFile("pepp", to: setFolder)
-                await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.happyPhrase)
+                success = await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.happyPhrase)
                 // No end.wav - pepp talks don't have farewells
-                success = true
             } catch {
                 print("🧠 Pepp generation failed: \(error)")
             }
@@ -134,10 +133,10 @@ Svara endast med JSON som matchar schemat.
             do {
                 let r: GreetOut = try await thinker.generate(template: passByTemplate, topicAction: randomTopicAction, topic: randomTopic, model: passByAndGreetSchema, options: opts)
                 try writeTypeFile("greeting", to: setFolder)
-                await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
-                await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), r.conversationPhrase)
-                await generateTTSToFile(setFolder.appendingPathComponent("end.wav"), r.goodbyePhrase)
-                success = true
+                let ttsSuccess1 = await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
+                let ttsSuccess2 = await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), r.conversationPhrase)
+                let ttsSuccess3 = await generateTTSToFile(setFolder.appendingPathComponent("end.wav"), r.goodbyePhrase)
+                success = ttsSuccess1 && ttsSuccess2 && ttsSuccess3
             } catch {
                 print("🧠 Greeting generation failed: \(error)")
             }
@@ -153,15 +152,18 @@ Svara endast med JSON som matchar schemat.
                     if q.isEmpty || Set([a1,a2,a3]).count < 3 { continue }
                     
                     try writeTypeFile("quiz", to: setFolder)
-                    await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
-                    await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), q)
-                    await generateTTSToFile(setFolder.appendingPathComponent("middle2.wav"), "A: " + a1)
-                    await generateTTSToFile(setFolder.appendingPathComponent("middle3.wav"), "B: " + a2)
-                    await generateTTSToFile(setFolder.appendingPathComponent("middle4.wav"), "C: " + a3)
-                    await generateTTSToFile(setFolder.appendingPathComponent("middle5.wav"), "Svaret är: \(r.correct_answer)")
-                    await generateTTSToFile(setFolder.appendingPathComponent("end.wav"), r.goodbyePhrase)
-                    success = true
-                    break
+                    let ttsSuccess1 = await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
+                    let ttsSuccess2 = await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), "Tid för en quiz: " + q)
+                    let ttsSuccess3 = await generateTTSToFile(setFolder.appendingPathComponent("middle2.wav"), "A: " + a1)
+                    let ttsSuccess4 = await generateTTSToFile(setFolder.appendingPathComponent("middle3.wav"), "B: " + a2)
+                    let ttsSuccess5 = await generateTTSToFile(setFolder.appendingPathComponent("middle4.wav"), "C: " + a3)
+                    let ttsSuccess6 = await generateTTSToFile(setFolder.appendingPathComponent("middle5.wav"), "Svaret är: \(r.correct_answer)")
+                    let ttsSuccess7 = await generateTTSToFile(setFolder.appendingPathComponent("end.wav"), r.goodbyePhrase)
+                    
+                    if ttsSuccess1 && ttsSuccess2 && ttsSuccess3 && ttsSuccess4 && ttsSuccess5 && ttsSuccess6 && ttsSuccess7 {
+                        success = true
+                        break
+                    }
                 } catch {
                     print("🧠 Quiz generation attempt failed: \(error)")
                 }
@@ -175,11 +177,11 @@ Svara endast med JSON som matchar schemat.
             do {
                 let r: JokeOut = try await thinker.generate(template: jokeTemplate, topicAction: randomTopicAction, topic: randomTopic, model: jokeSchema, options: opts)
                 try writeTypeFile("joke", to: setFolder)
-                await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
-                await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), r.secret)
-                await generateTTSToFile(setFolder.appendingPathComponent("middle2.wav"), r.compliment)
-                await generateTTSToFile(setFolder.appendingPathComponent("end.wav"), r.goodbyePhrase)
-                success = true
+                let ttsSuccess1 = await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
+                let ttsSuccess2 = await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), r.secret)
+                let ttsSuccess3 = await generateTTSToFile(setFolder.appendingPathComponent("middle2.wav"), r.compliment)
+                let ttsSuccess4 = await generateTTSToFile(setFolder.appendingPathComponent("end.wav"), r.goodbyePhrase)
+                success = ttsSuccess1 && ttsSuccess2 && ttsSuccess3 && ttsSuccess4
             } catch {
                 print("🧠 Joke generation failed: \(error)")
             }
@@ -192,9 +194,9 @@ Svara endast med JSON som matchar schemat.
             do {
                 let r: PointOut = try await thinker.generate(template: pointingTemplate, topicAction: randomTopicAction, topic: randomTopic, model: pointingSchema, options: opts)
                 try writeTypeFile("pointing", to: setFolder)
-                await generateTTSToFile(setFolder.appendingPathComponent("attention.wav"), r.attentionPhrase)
-                await generateTTSToFile(setFolder.appendingPathComponent("lecture.wav"), r.lecturePhrase)
-                success = true
+                let ttsSuccess1 = await generateTTSToFile(setFolder.appendingPathComponent("attention.wav"), r.attentionPhrase)
+                let ttsSuccess2 = await generateTTSToFile(setFolder.appendingPathComponent("lecture.wav"), r.lecturePhrase)
+                success = ttsSuccess1 && ttsSuccess2
             } catch {
                 print("🧠 Pointing generation failed: \(error)")
             }
@@ -225,18 +227,22 @@ Svara endast med JSON som matchar schemat.
     }
     
     /// Generates TTS audio and saves directly to a file.
+    /// Returns false if synthesis failed so callers can clean up partial sets.
     /// - Parameters:
     ///   - fileURL: The URL to save the WAV file to
     ///   - text: The text to synthesize
-    private func generateTTSToFile(_ fileURL: URL, _ text: String) async {
+    private func generateTTSToFile(_ fileURL: URL, _ text: String) async -> Bool {
         let cleaned = text.cleanup()
-        guard !cleaned.isEmpty else { return }
+        guard !cleaned.isEmpty else {
+            print("TTS generation skipped: empty text for \(fileURL.lastPathComponent)")
+            return false
+        }
         
         print("📝 TTS: \(fileURL.lastPathComponent) <- \(cleaned)")
         
         guard await (voice as? RoboSantaTTS)?.server.waitUntilReady() ?? true else {
             print("TTS server not ready")
-            return
+            return false
         }
         
         struct Payload: Encodable {
@@ -265,14 +271,14 @@ Svara endast med JSON som matchar schemat.
             let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                 print("TTS server error")
-                return
+                return false
             }
             
             let responseData = try JSONDecoder().decode(Response.self, from: data)
             let uuid = responseData.uuid
             
             // Step 2: Download the WAV file
-            guard let downloadURL = URL(string: "http://127.0.0.1:8080/\(uuid)") else { return }
+            guard let downloadURL = URL(string: "http://127.0.0.1:8080/\(uuid)") else { return false }
             
             let (wavData, _) = try await session.data(from: downloadURL)
             
@@ -280,8 +286,10 @@ Svara endast med JSON som matchar schemat.
             try wavData.write(to: fileURL)
             // print("💾 Saved: \(fileURL.lastPathComponent)")
             
+            return true
         } catch {
             print("TTS generation failed: \(error)")
+            return false
         }
     }
     
