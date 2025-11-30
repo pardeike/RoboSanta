@@ -29,6 +29,14 @@ struct InteractionConfiguration: Equatable, Sendable {
     /// Delay between checking engagement during conversation
     let engagementCheckIntervalSeconds: TimeInterval
     
+    /// Delay (seconds) before playing attention phrase to let arm start moving
+    /// Used in pointing interactions
+    let pointingArmStartDelaySeconds: TimeInterval
+    
+    /// Delay (seconds) after attention phrase before raising arm fully
+    /// Used in pointing interactions for smooth gesture transition
+    let pointingArmTransitionDelaySeconds: TimeInterval
+    
     /// Default configuration with sensible values
     static let `default` = InteractionConfiguration(
         faceYawToleranceDeg: 5.0,
@@ -36,7 +44,9 @@ struct InteractionConfiguration: Equatable, Sendable {
         personDetectionDurationSeconds: 1.0,
         farewellSkipThresholdSeconds: 3.0,
         lookAwayTimeoutSeconds: 2.0,
-        engagementCheckIntervalSeconds: 0.5
+        engagementCheckIntervalSeconds: 0.5,
+        pointingArmStartDelaySeconds: 0.2,
+        pointingArmTransitionDelaySeconds: 0.3
     )
     
     /// Creates a configuration with custom values.
@@ -46,7 +56,9 @@ struct InteractionConfiguration: Equatable, Sendable {
         personDetectionDurationSeconds: TimeInterval = 1.0,
         farewellSkipThresholdSeconds: TimeInterval = 3.0,
         lookAwayTimeoutSeconds: TimeInterval = 2.0,
-        engagementCheckIntervalSeconds: TimeInterval = 0.5
+        engagementCheckIntervalSeconds: TimeInterval = 0.5,
+        pointingArmStartDelaySeconds: TimeInterval = 0.2,
+        pointingArmTransitionDelaySeconds: TimeInterval = 0.3
     ) {
         self.faceYawToleranceDeg = faceYawToleranceDeg
         self.postGreetingFaceYawToleranceDeg = postGreetingFaceYawToleranceDeg
@@ -54,5 +66,7 @@ struct InteractionConfiguration: Equatable, Sendable {
         self.farewellSkipThresholdSeconds = farewellSkipThresholdSeconds
         self.lookAwayTimeoutSeconds = lookAwayTimeoutSeconds
         self.engagementCheckIntervalSeconds = engagementCheckIntervalSeconds
+        self.pointingArmStartDelaySeconds = pointingArmStartDelaySeconds
+        self.pointingArmTransitionDelaySeconds = pointingArmTransitionDelaySeconds
     }
 }

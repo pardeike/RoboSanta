@@ -452,7 +452,8 @@ final class InteractionCoordinator {
         stateMachine.send(.startPointingGesture)
         
         // Small delay to let the arm start moving
-        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+        let armStartDelayNanos = UInt64(config.pointingArmStartDelaySeconds * 1_000_000_000)
+        try? await Task.sleep(nanoseconds: armStartDelayNanos)
         
         // Play attention phrase while arm is rising/holding
         let attentionSuccess = await audioPlayer.play(attentionFile)
@@ -465,7 +466,8 @@ final class InteractionCoordinator {
         stateMachine.send(.pointingAttentionDone)
         
         // Small delay for transition
-        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+        let armTransitionDelayNanos = UInt64(config.pointingArmTransitionDelaySeconds * 1_000_000_000)
+        try? await Task.sleep(nanoseconds: armTransitionDelayNanos)
         
         // Play lecture phrase while arm is raised
         let lectureSuccess = await audioPlayer.play(lectureFile)

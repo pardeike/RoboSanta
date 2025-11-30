@@ -25,13 +25,15 @@ struct ConversationSet: Identifiable, Equatable, Sendable {
     /// The interaction type of this set
     let type: InteractionType
     
-    /// Path to the start phrase audio file (nil for pointing type)
+    /// Path to the start phrase audio file.
+    /// Note: For pointing type interactions, use `attentionFile` instead.
     let startFile: URL
     
     /// Paths to middle phrase audio files (sorted: middle1.wav, middle2.wav, ...)
     let middleFiles: [URL]
     
-    /// Path to the end phrase audio file
+    /// Path to the end phrase audio file.
+    /// Note: For pepp and pointing types, check `hasEnd` before using this file.
     let endFile: URL
     
     /// Timestamp when this set was created (parsed from folder name)

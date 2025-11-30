@@ -179,6 +179,16 @@ final class StateMachine {
         case raisingFull           // Moving to 1.0 (up point)
         case holdingFull           // At 1.0, waiting for external signal
         case lowering              // Moving back to 0
+        
+        /// Whether the right hand is in a state that can be aborted with pointingLectureDone
+        var canAbortWithLowerCommand: Bool {
+            switch self {
+            case .holdingFull, .holdingHalf, .raisingHalf, .raisingFull:
+                return true
+            case .lowered, .lowering:
+                return false
+            }
+        }
     }
     private enum ServoAxis { case head, body }
     
@@ -597,7 +607,7 @@ final class StateMachine {
                 }
 
             case .pointingLectureDone:
-                if behavior.rightHandAutoState == .holdingFull || behavior.rightHandAutoState == .holdingHalf || behavior.rightHandAutoState == .raisingHalf {
+                if behavior.rightHandAutoState.canAbortWithLowerCommand {
                     behavior.rightHandAutoState = .lowering
                     let downPosition = configuration.rightHand.logicalRange.lowerBound
                     setRightHandTarget(angle: downPosition, speed: settings.rightHandLowerSpeed)

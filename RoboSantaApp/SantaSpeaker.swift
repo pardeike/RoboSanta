@@ -101,7 +101,9 @@ Svara endast med JSON som matchar schemat.
             return false
         }
         
-        let interactionType = Int.random(in: 0...4)
+        // Number of interaction types: 0=pepp, 1=greeting, 2=quiz, 3=joke, 4=pointing
+        let maxInteractionType = 4
+        let interactionType = Int.random(in: 0...maxInteractionType)
         var interactionName = "unknown"
         var success = false
         
