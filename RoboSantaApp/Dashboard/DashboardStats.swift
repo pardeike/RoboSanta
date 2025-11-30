@@ -77,6 +77,12 @@ final class DashboardStats {
     /// Current generation status
     private(set) var generationStatus: String = "Väntar..."
     
+    /// Current topic being generated
+    private(set) var currentGenerationTopic: String = ""
+    
+    /// List of upcoming topics in the queue (most recent first)
+    private(set) var upcomingTopics: [String] = []
+    
     /// Whether a person is currently detected
     private(set) var personDetected: Bool = false
     
@@ -147,6 +153,28 @@ final class DashboardStats {
     /// Updates the generation status
     func updateGenerationStatus(_ status: String) {
         generationStatus = status
+    }
+    
+    /// Updates the current generation topic
+    func updateCurrentTopic(_ topic: String) {
+        currentGenerationTopic = topic
+    }
+    
+    /// Updates the list of upcoming topics in the queue
+    func updateUpcomingTopics(_ topics: [String]) {
+        upcomingTopics = topics
+    }
+    
+    /// Adds a topic to the upcoming queue
+    func addUpcomingTopic(_ topic: String) {
+        upcomingTopics.append(topic)
+    }
+    
+    /// Removes the oldest topic from the queue (when consumed)
+    func removeOldestTopic() {
+        if !upcomingTopics.isEmpty {
+            upcomingTopics.removeFirst()
+        }
     }
     
     /// Updates person detection state

@@ -368,13 +368,13 @@ struct DashboardView: View {
                     }
                 }
                 
-                // Upcoming topics
+                // Upcoming topics from queue
                 if !upcomingTopics.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Ämnen:")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.white.opacity(0.5))
-                        Text(upcomingTopics.prefix(3).joined(separator: ", "))
+                        Text(upcomingTopics.joined(separator: ", "))
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.white.opacity(0.7))
                             .lineLimit(2)
@@ -403,9 +403,22 @@ struct DashboardView: View {
                         Text(stats.generationStatus)
                             .font(.system(size: 18, weight: .bold))
                             .foregroundColor(.white)
-                            .lineLimit(2)
+                            .lineLimit(1)
                     }
                     Spacer()
+                }
+                
+                // Current topic being generated
+                if !stats.currentGenerationTopic.isEmpty && stats.generationStatus.contains("Generar") {
+                    HStack {
+                        Text("Ämne:")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                        Text(stats.currentGenerationTopic)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(SantaColors.primaryRed)
+                        Spacer()
+                    }
                 }
                 
                 // Activity indicator
@@ -612,22 +625,14 @@ struct DashboardView: View {
     
     private func updateQueueInfo() {
         queueCount = queueManager.queueCount
-        // Get upcoming topics from queue
-        upcomingTopics = queueManager.availableSets.prefix(3).map { interactionTypeName($0.type) }
+        // Get upcoming topics from queue (actual topic words, not conversation types)
+        upcomingTopics = queueManager.availableSets.prefix(5).compactMap { set -> String? in
+            let topic = set.topic
+            return topic.isEmpty ? nil : topic
+        }
         if let ic = interaction {
             stats.updateState(ic.state)
             isSpeaking = ic.isSpeaking
-        }
-    }
-    
-    private func interactionTypeName(_ type: InteractionType) -> String {
-        switch type {
-        case .greeting: return "Hälsning"
-        case .pepp: return "Pepp"
-        case .quiz: return "Quiz"
-        case .joke: return "Skämt"
-        case .pointing: return "Pekning"
-        case .unknown: return "Okänd"
         }
     }
 }
