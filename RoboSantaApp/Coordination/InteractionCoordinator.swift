@@ -211,6 +211,16 @@ final class InteractionCoordinator {
         }
     }
     
+    /// Checks the next queued interaction and suppresses waving if it's a pointing type.
+    /// This prevents both arms from going up simultaneously.
+    private func updateWavingSuppressionForNextInteraction() {
+        if let nextSet = queueManager.peekOldest(), nextSet.type == .pointing {
+            stateMachine.send(.suppressWaving)
+        } else {
+            stateMachine.send(.allowWaving)
+        }
+    }
+    
     // MARK: - Coordination Loop
     
     private func runCoordinationLoop() async {
@@ -257,6 +267,8 @@ final class InteractionCoordinator {
         if queueManager.hasContent {
             transition(to: .patrolling, reason: "queue has content")
             updateIdleBehavior()
+            // Preemptively suppress waving if next interaction is pointing
+            updateWavingSuppressionForNextInteraction()
         }
     }
     
@@ -265,8 +277,12 @@ final class InteractionCoordinator {
         if !queueManager.hasContent {
             transition(to: .idle, reason: "queue empty")
             updateIdleBehavior()
+            stateMachine.send(.allowWaving) // Re-enable waving when idle
             return
         }
+        
+        // Keep waving suppression in sync with the next interaction type
+        updateWavingSuppressionForNextInteraction()
         
         // Check for engaged person
         if isPersonPresentForGreeting() {
@@ -361,7 +377,8 @@ final class InteractionCoordinator {
         // Handle different interaction types
         switch set.type {
         case .pointing:
-            // Suppress waving during pointing to avoid both arms going up
+            // Waving should already be suppressed by updateWavingSuppressionForNextInteraction()
+            // but ensure it's suppressed as a safety measure
             stateMachine.send(.suppressWaving)
             transition(to: .greeting, reason: "starting pointing interaction")
             isSpeaking = true
@@ -369,8 +386,6 @@ final class InteractionCoordinator {
             if !success {
                 print("🎄 Pointing interaction failed")
             }
-            // Re-enable waving after pointing is complete
-            stateMachine.send(.allowWaving)
             // Pointing has no farewell
             await cleanupConversation()
             return
@@ -386,6 +401,8 @@ final class InteractionCoordinator {
             
         default:
             // Standard flow for greeting, quiz, joke, unknown
+            // Ensure waving is allowed for non-pointing interactions
+            stateMachine.send(.allowWaving)
             break
         }
         
@@ -547,8 +564,12 @@ final class InteractionCoordinator {
         updateQueueState()
         if queueManager.hasContent {
             transition(to: .patrolling, reason: "conversation complete, queue has content")
+            // Update waving suppression based on the next interaction
+            updateWavingSuppressionForNextInteraction()
         } else {
             transition(to: .idle, reason: "conversation complete, queue empty")
+            // Allow waving when idle with empty queue
+            stateMachine.send(.allowWaving)
         }
         
         updateIdleBehavior()
