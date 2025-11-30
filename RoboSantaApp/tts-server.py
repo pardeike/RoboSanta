@@ -11,6 +11,7 @@ import warnings
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import torch
+import torch.nn.functional as F 
 import torchaudio as ta
 
 os.environ["TQDM_DISABLE"] = "1"
@@ -38,6 +39,46 @@ def _torch_load_cpu(*args, **kw):
 
 
 torch.load = _torch_load_cpu
+
+
+def _trim_wav(wav: torch.Tensor, sample_rate: int) -> torch.Tensor:
+    """Remove leading/trailing near-silence from a waveform.
+
+    Uses a short RMS envelope to find the first/last regions that rise above
+    a small fraction of the peak, then trims with a small guard band to avoid
+    chopping consonants. If trimming fails or removes everything, the original
+    tensor is returned.
+    """
+    if wav.numel() == 0:
+        return wav
+
+    # Collapse to a mono envelope and smooth with a short average window
+    magnitude = wav.abs().max(dim=0).values
+    window = max(int(sample_rate * 0.03), 1)  # ~30ms
+    kernel = torch.ones(1, 1, window, device=wav.device) / window
+    envelope = F.conv1d(magnitude.view(1, 1, -1), kernel, padding=window // 2).squeeze()
+
+    peak = envelope.max()
+    if peak <= 0:
+        return wav
+
+    threshold = max(peak * 0.04, 1e-4)  # Require ~4% of envelope peak
+    active = envelope >= threshold
+    if not torch.any(active):
+        return wav
+
+    indices = torch.nonzero(active, as_tuple=False).flatten()
+    start = int(indices[0].item())
+    end = int(indices[-1].item())
+
+    guard = int(sample_rate * 0.03)
+    start = max(0, start - guard)
+    end = min(wav.shape[1] - 1, end + guard)
+
+    if end <= start:
+        return wav
+
+    return wav[:, start : end + 1]
 
 
 def _load_tts():
@@ -147,10 +188,19 @@ def synthesize_to_file(output_path: str, voice: str, text: str) -> None:
             cfg_weight=0.1,
         )
 
+    # trimmed_wav = _trim_wav(wav, tts.sr)
+    # if trimmed_wav.shape[1] == 0:
+    #     trimmed_wav = wav
+    # elif trimmed_wav.shape[1] < wav.shape[1]:
+    #     original_dur = wav.shape[1] / tts.sr
+    #     trimmed_dur = trimmed_wav.shape[1] / tts.sr
+    #     print(f"Trimmed WAV from {original_dur:.2f}s to {trimmed_dur:.2f}s", file=sys.stderr)
+
     directory = os.path.dirname(output_path)
     if directory:
         os.makedirs(directory, exist_ok=True)
     ta.save(output_path, wav, tts.sr)
+    # ta.save(output_path, trimmed_wav, tts.sr)
 
 
 class TTSServerHandler(BaseHTTPRequestHandler):

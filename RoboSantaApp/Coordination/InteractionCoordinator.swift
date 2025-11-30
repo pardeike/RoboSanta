@@ -88,6 +88,8 @@ final class InteractionCoordinator {
         
         // Clean up any orphaned in-progress sets from previous runs
         queueManager.cleanupOrphanedInProgress()
+        // Remove any partial/incomplete conversation folders
+        queueManager.cleanupIncompleteSets()
         
         // Initial queue scan
         updateQueueState()

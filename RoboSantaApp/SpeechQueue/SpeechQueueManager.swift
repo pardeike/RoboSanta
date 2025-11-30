@@ -335,6 +335,46 @@ final class SpeechQueueManager {
             print("⚠️ SpeechQueueManager: Failed to cleanup orphaned in-progress: \(error)")
         }
     }
+    
+    /// Removes any incomplete or invalid conversation set folders from the queue.
+    /// Useful for cleaning up partial generations left after crashes or interruptions.
+    func cleanupIncompleteSets() {
+        do {
+            let contents = try fileManager.contentsOfDirectory(
+                at: config.queueDirectory,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+            
+            var removedCount = 0
+            
+            for url in contents {
+                // Skip done directory and active in-progress markers
+                if url.lastPathComponent == "DONE" || url.pathExtension == "inprogress" {
+                    continue
+                }
+                
+                var isDirectory: ObjCBool = false
+                guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                      isDirectory.boolValue else {
+                    continue
+                }
+                
+                // If the folder doesn't form a valid conversation set, remove it
+                if ConversationSet(folderURL: url) == nil {
+                    try fileManager.removeItem(at: url)
+                    removedCount += 1
+                    print("🧹 SpeechQueue: Removed incomplete set \(url.lastPathComponent)")
+                }
+            }
+            
+            if removedCount > 0 {
+                scanQueue()
+            }
+        } catch {
+            print("⚠️ SpeechQueueManager: Failed to cleanup incomplete sets: \(error)")
+        }
+    }
 }
 
 // MARK: - Internal Initialization Extension
