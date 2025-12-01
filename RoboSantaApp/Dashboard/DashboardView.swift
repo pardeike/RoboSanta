@@ -409,7 +409,7 @@ struct DashboardView: View {
                 }
                 
                 // Current topic being generated
-                if !stats.currentGenerationTopic.isEmpty && stats.generationStatus.contains("Generar") {
+                if !stats.currentGenerationTopic.isEmpty && stats.generationStatus.contains("Genererar") {
                     HStack {
                         Text("Ämne:")
                             .font(.system(size: 14, weight: .medium))
@@ -422,7 +422,7 @@ struct DashboardView: View {
                 }
                 
                 // Activity indicator
-                if stats.generationStatus.contains("Generar") {
+                if stats.generationStatus.contains("Genererar") {
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: SantaColors.primaryRed))
                         .scaleEffect(1.0)
