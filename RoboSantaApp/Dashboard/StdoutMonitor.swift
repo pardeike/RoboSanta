@@ -6,13 +6,13 @@ import Combine
 import Darwin
 
 /// Tees stdout into an in-memory buffer so the dashboard can render recent lines.
-@MainActor
 final class StdoutMonitor: ObservableObject {
     static let shared = StdoutMonitor()
     
     @Published private(set) var lines: [String] = []
     
     private let maxLines: Int
+    private let captureQueue = DispatchQueue(label: "StdoutMonitor.CaptureQueue")
     private var pendingFragment = ""
     private var stdoutPipe: Pipe?
     private var originalStdout: Int32 = -1
@@ -36,9 +36,10 @@ final class StdoutMonitor: ObservableObject {
         dup2(pipe.fileHandleForWriting.fileDescriptor, STDOUT_FILENO)
         
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
+            guard let self else { return }
             let data = handle.availableData
             guard !data.isEmpty else { return }
-            Task { @MainActor [weak self] in
+            self.captureQueue.async { [weak self] in
                 self?.handleIncoming(data)
             }
         }
@@ -65,9 +66,12 @@ final class StdoutMonitor: ObservableObject {
     }
     
     private func appendLine(_ line: String) {
-        lines.append(line)
-        if lines.count > maxLines {
-            lines.removeFirst(lines.count - maxLines)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.lines.append(line)
+            if self.lines.count > self.maxLines {
+                self.lines.removeFirst(self.lines.count - self.maxLines)
+            }
         }
     }
 }

@@ -28,6 +28,10 @@ struct InteractionConfiguration: Equatable, Sendable {
     
     /// Delay between checking engagement during conversation
     let engagementCheckIntervalSeconds: TimeInterval
+
+    /// Cooldown after completing a conversation set before starting the next one (seconds).
+    /// Prevents back-to-back interactions when someone lingers in front of Santa.
+    let postConversationCooldownSeconds: TimeInterval
     
     /// Delay (seconds) before playing attention phrase to let arm start moving
     /// Used in pointing interactions
@@ -45,6 +49,7 @@ struct InteractionConfiguration: Equatable, Sendable {
         farewellSkipThresholdSeconds: 3.0,
         lookAwayTimeoutSeconds: 2.0,
         engagementCheckIntervalSeconds: 0.5,
+        postConversationCooldownSeconds: 4.0,
         pointingArmStartDelaySeconds: 0.2,
         pointingArmTransitionDelaySeconds: 0.3
     )
@@ -57,6 +62,7 @@ struct InteractionConfiguration: Equatable, Sendable {
         farewellSkipThresholdSeconds: TimeInterval = 3.0,
         lookAwayTimeoutSeconds: TimeInterval = 2.0,
         engagementCheckIntervalSeconds: TimeInterval = 0.5,
+        postConversationCooldownSeconds: TimeInterval = 4.0,
         pointingArmStartDelaySeconds: TimeInterval = 0.2,
         pointingArmTransitionDelaySeconds: TimeInterval = 0.3
     ) {
@@ -66,6 +72,7 @@ struct InteractionConfiguration: Equatable, Sendable {
         self.farewellSkipThresholdSeconds = farewellSkipThresholdSeconds
         self.lookAwayTimeoutSeconds = lookAwayTimeoutSeconds
         self.engagementCheckIntervalSeconds = engagementCheckIntervalSeconds
+        self.postConversationCooldownSeconds = postConversationCooldownSeconds
         self.pointingArmStartDelaySeconds = pointingArmStartDelaySeconds
         self.pointingArmTransitionDelaySeconds = pointingArmTransitionDelaySeconds
     }

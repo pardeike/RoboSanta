@@ -47,6 +47,7 @@ final class InteractionCoordinator {
     private var currentSet: ConversationSet? = nil
     private var currentPhraseIndex: Int = 0
     private var lastLookingTime: Date? = nil
+    private var conversationCooldownUntil: Date?
     
     // MARK: - Combine
     
@@ -296,6 +297,11 @@ final class InteractionCoordinator {
         // Keep waving suppression in sync with the next interaction type
         updateWavingSuppressionForNextInteraction()
         
+        // Respect cooldown between interactions when someone lingers
+        if isConversationCooldownActive() {
+            return
+        }
+        
         // Check for engaged person
         if isPersonPresentForGreeting() {
             transition(to: .personDetected, reason: "person detected (pre-greeting)")
@@ -303,6 +309,12 @@ final class InteractionCoordinator {
     }
     
     private func handlePersonDetectedState() async {
+        // Respect cooldown between interactions if the last set just finished
+        if isConversationCooldownActive() {
+            transition(to: .patrolling, reason: "cooldown active before next interaction")
+            return
+        }
+        
         // Verify person is still engaged
         guard isPersonPresentForGreeting() else {
             transition(to: .patrolling, reason: "person no longer detected for greeting")
@@ -600,6 +612,10 @@ final class InteractionCoordinator {
         currentSetId = nil
         currentPhraseIndex = 0
         isSpeaking = false
+        if completed {
+            conversationCooldownUntil = Date().addingTimeInterval(config.postConversationCooldownSeconds)
+            print("⏳ Cooldown for \(config.postConversationCooldownSeconds)s before next interaction")
+        }
         
         // Return to appropriate state
         updateQueueState()
@@ -631,6 +647,17 @@ final class InteractionCoordinator {
     private func isRecentlyLost() -> Bool {
         guard let lastDetection = lastDetectionTime else { return false }
         return Date().timeIntervalSince(lastDetection) < config.farewellSkipThresholdSeconds
+    }
+
+    /// Returns true if the post-conversation cooldown is still active.
+    private func isConversationCooldownActive() -> Bool {
+        guard let until = conversationCooldownUntil else { return false }
+        if Date() < until {
+            return true
+        } else {
+            conversationCooldownUntil = nil
+            return false
+        }
     }
     
     /// Logs state transitions with reason.

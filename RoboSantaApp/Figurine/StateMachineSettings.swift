@@ -355,7 +355,7 @@ extension StateMachine.ServoChannelConfiguration.StallGuard {
             tolerance: 2.0,
             holdDuration: 0.3,
             minMovement: 0.4,
-            backoff: 6.0
+            backoff: 10.5
         )
     }
 }
@@ -418,9 +418,9 @@ extension StateMachine.IdleBehavior.PatrolConfiguration {
     static var defaultPatrolConfiguration: Self {
         .init(
             headings: [-90, 90],
-            intervalRange: 6...10,
+            intervalRange: 14...24,
             transitionDurationRange: 1.8...3.2,
-            headFollowRate: 0.6,
+            headFollowRate: 0.7,
             bodyFollowRate: 0.2,
             headJitterRange: (-5)...5,
             includeCameraBounds: true
