@@ -5,6 +5,7 @@ import Foundation
 import AppKit
 import Combine
 import CoreGraphics
+import CoreImage
 
 @preconcurrency import AVFoundation
 @preconcurrency import Vision
@@ -32,6 +33,9 @@ final class VisionDetectionSource: NSObject, PersonDetectionSource, ObservableOb
     
     @Published var portraitModeEnabled = false {
         didSet { applyOrientationMode() }
+    }
+    @Published var previewBlurRadius: CGFloat = 0 {
+        didSet { applyPreviewBlur() }
     }
     
     var detectionFrames: AnyPublisher<DetectionFrame, Never> {
@@ -132,6 +136,7 @@ final class VisionDetectionSource: NSObject, PersonDetectionSource, ObservableOb
         previewLayer.frame = hostLayer.bounds
         previewLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         hostLayer.addSublayer(previewLayer)
+        applyPreviewBlur()
         
         overlayLayer.frame = hostLayer.bounds
         overlayLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
@@ -233,6 +238,25 @@ final class VisionDetectionSource: NSObject, PersonDetectionSource, ObservableOb
         for connection in session.connections {
             guard connection.isVideoRotationAngleSupported(angle) else { continue }
             connection.videoRotationAngle = angle
+        }
+    }
+    
+    private func applyPreviewBlur() {
+        let radius = max(0, previewBlurRadius)
+        DispatchQueue.main.async {
+            // Remove blur when radius is zero to avoid extra compositing cost.
+            guard radius > 0 else {
+                self.previewLayer.filters = nil
+                return
+            }
+            
+            guard let filter = CIFilter(name: "CIGaussianBlur") else {
+                self.previewLayer.filters = nil
+                return
+            }
+            filter.setDefaults()
+            filter.setValue(radius, forKey: kCIInputRadiusKey)
+            self.previewLayer.filters = [filter]
         }
     }
 }

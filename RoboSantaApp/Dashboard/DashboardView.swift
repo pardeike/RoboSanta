@@ -675,15 +675,19 @@ struct DashboardCard<Content: View>: View {
 
 struct BlurredCameraPreview: NSViewRepresentable {
     @EnvironmentObject var visionSource: VisionDetectionSource
+    var blurRadius: CGFloat = 8
     
     func makeNSView(context: Context) -> BlurredPreviewHostView {
         let view = BlurredPreviewHostView()
+        visionSource.previewBlurRadius = blurRadius
         visionSource.attach(to: view.rootLayer)
         return view
     }
     
     func updateNSView(_ nsView: BlurredPreviewHostView, context: Context) {
-        // Layer autoresizes; nothing to do.
+        if visionSource.previewBlurRadius != blurRadius {
+            visionSource.previewBlurRadius = blurRadius
+        }
     }
 }
 
