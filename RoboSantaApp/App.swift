@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Set to true to keep the legacy 90° portrait camera rotation; landscape is default.
 private let portraitCameraMode = false
@@ -46,6 +47,16 @@ let dashboardStats = DashboardStats.shared
 
 @main
 struct MinimalApp: App {
+    @State private var didRequestFullScreen = false
+    private let stayAwakeActivity: NSObjectProtocol
+
+    init() {
+        stayAwakeActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.idleSystemSleepDisabled, .idleDisplaySleepDisabled],
+            reason: "RoboSanta should keep the Mac awake while running"
+        )
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
@@ -59,6 +70,17 @@ struct MinimalApp: App {
                     VirtualModeView(coordinator: coordinator)
                 }
             }
+            .background(
+                WindowAccessor { window in
+                    guard fullScreenDashboard, !didRequestFullScreen else { return }
+                    guard let window else { return }
+                    didRequestFullScreen = true
+                    window.collectionBehavior.insert(.fullScreenPrimary)
+                    if !window.styleMask.contains(.fullScreen) {
+                        window.toggleFullScreen(nil)
+                    }
+                }
+            )
             .task {
                 if let source = coordinator.detectionSource as? VisionDetectionSource {
                     source.portraitModeEnabled = portraitCameraMode
@@ -99,4 +121,16 @@ struct MinimalApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 900)
     }
+}
+
+private struct WindowAccessor: NSViewRepresentable {
+    let onResolve: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { onResolve(view.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) { }
 }
