@@ -74,6 +74,7 @@ struct DashboardView: View {
                         VStack(spacing: 16) {
                             cameraPreviewCard
                             servoInfoCard
+                            Spacer(minLength: 0)
                         }
                         .frame(width: geometry.size.width * 0.4)
                         .frame(maxHeight: .infinity)
@@ -709,7 +710,7 @@ final class BlurredPreviewHostView: NSView {
 
 struct SnowfallView: View {
     @State private var flakes: [Snowflake] = []
-    let timer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
+    let timer = Timer.publish(every: 0.04, on: .main, in: .common).autoconnect()
     
     struct Snowflake: Identifiable {
         let id = UUID()
@@ -724,9 +725,9 @@ struct SnowfallView: View {
         GeometryReader { geometry in
             ZStack {
                 ForEach(flakes) { flake in
-                    Circle()
-                        .fill(Color.white.opacity(0.6))
-                        .frame(width: flake.size, height: flake.size)
+                    Text("❆")
+                        .font(Font.system(size: flake.size))
+                        .foregroundColor(Color.white.opacity(0.6))
                         .position(x: flake.x, y: flake.y)
                         .blur(radius: flake.size > 3 ? 0 : 1)
                 }
@@ -737,9 +738,9 @@ struct SnowfallView: View {
                     flakes.append(Snowflake(
                         x: CGFloat.random(in: 0...geometry.size.width),
                         y: CGFloat.random(in: 0...geometry.size.height),
-                        size: CGFloat.random(in: 2...5),
-                        speed: CGFloat.random(in: 0.3...1.0),
-                        drift: CGFloat.random(in: -0.3...0.3)
+                        size: CGFloat.random(in: 24...48),
+                        speed: CGFloat.random(in: 1.2...4.0),
+                        drift: CGFloat.random(in: -1...1)
                     ))
                 }
             }
