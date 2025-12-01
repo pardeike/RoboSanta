@@ -198,9 +198,9 @@ final class StateMachine {
     private enum DeepSleepPhase {
         case lowerHands(bodyHold: Double, startedAt: Date)
         case centerHead(bodyHold: Double, startedAt: Date)
-        case overshoot(target: Double)
-        case settle(startedAt: Date)
-        case nudge(direction: Double, remaining: Int, startedAt: Date)
+        case sweepToEdge(target: Double, startedAt: Date)
+        case overshootToCenter(target: Double, startedAt: Date)
+        case finalPark(startedAt: Date)
         case parked(target: Double)
     }
     
@@ -323,13 +323,12 @@ final class StateMachine {
     private let loggingLevel: LoggingLevel
     private let workerQueue = DispatchQueue(label: "RoboSanta.StateMachine", qos: .userInitiated)
     private let workerQueueKey = DispatchSpecificKey<Void>()
-    private let deepSleepCenterBackoff: Double = 4
-    private let deepSleepSettleTimeout: TimeInterval = 4
-    private let deepSleepNudgeAmplitude: Double = 8
-    private let deepSleepNudgeCount: Int = 1
-    private let deepSleepNudgeStepTimeout: TimeInterval = 2
-    private let deepSleepNudgeRateCapDegPerSec: Double = 60
-    private let deepSleepParkSlipAllowance: Double = 0.2
+    private let deepSleepEdgeHoldDuration: TimeInterval = 1.5
+    private let deepSleepOvershootHoldDuration: TimeInterval = 1.0
+    private let deepSleepFinalSettleDuration: TimeInterval = 1.0
+    private let deepSleepCenterOvershoot: Double = 6.0
+    private let deepSleepFastRateCapDegPerSec: Double = 140
+    private let deepSleepFinalRateCapDegPerSec: Double = 20
     private let deepSleepHandsTimeout: TimeInterval = 1.5
     private let deepSleepHeadTimeout: TimeInterval = 1.0
     
@@ -1693,10 +1692,8 @@ final class StateMachine {
         let settleTarget = clampBody(0)
         var desiredBody = behavior.bodyTarget
         var desiredHead = behavior.headTarget
-        let measured = measuredBodyAngle
+        let measuredBody = measuredBodyAngle ?? pose.bodyAngle
         let handsDown = handsFullyLowered()
-        // If the torso sticks short of center, wiggle around zero and then park at the
-        // measured angle to drop torque instead of fighting all night.
 
         switch behavior.deepSleepPhase {
         case .lowerHands(let hold, let startedAt):
@@ -1717,64 +1714,58 @@ final class StateMachine {
             let headCentered = hasReachedHeadTarget(measured: measuredHeadAngle, target: 0)
             let timedOut = now.timeIntervalSince(startedAt) >= deepSleepHeadTimeout
             if headCentered || timedOut {
-                let currentBody = measuredBodyAngle ?? pose.bodyAngle
-                let direction = (currentBody >= 0) ? 1.0 : -1.0
-                let overshootTarget = clampBody(direction * deepSleepCenterBackoff)
-                behavior.deepSleepPhase = .overshoot(target: overshootTarget)
-                desiredBody = overshootTarget
+                let edgeTarget = configuration.body.logicalRange.lowerBound
+                behavior.deepSleepPhase = .sweepToEdge(target: edgeTarget, startedAt: now)
+                desiredBody = edgeTarget
                 logEvent("deepSleep.phase", values: [
-                    "phase": "overshoot",
+                    "phase": "sweepToEdge",
+                    "target": edgeTarget,
+                    "measured": measuredBody,
                     "reason": headCentered ? "head_centered" : "timeout"
                 ])
             }
 
-        case .overshoot(let target):
+        case .sweepToEdge(let target, let startedAt):
             desiredBody = target
             desiredHead = clampHead(0)
-            if hasReachedBodyTarget(measured: measured, target: target) {
-                behavior.deepSleepPhase = .settle(startedAt: now)
-                var values: [String: CustomStringConvertible] = ["phase": "settle"]
-                if let measured { values["measured"] = measured }
-                logEvent("deepSleep.phase", values: values)
+            let elapsed = now.timeIntervalSince(startedAt)
+            if elapsed >= deepSleepEdgeHoldDuration {
+                let overshootTarget = clampBody(deepSleepCenterOvershoot)
+                behavior.deepSleepPhase = .overshootToCenter(target: overshootTarget, startedAt: now)
+                desiredBody = overshootTarget
+                logEvent("deepSleep.phase", values: [
+                    "phase": "overshootToCenter",
+                    "target": overshootTarget,
+                    "measured": measuredBody
+                ])
             }
 
-        case .settle(let startedAt):
+        case .overshootToCenter(let target, let startedAt):
+            desiredBody = target
+            desiredHead = clampHead(0)
+            let elapsed = now.timeIntervalSince(startedAt)
+            if elapsed >= deepSleepOvershootHoldDuration {
+                behavior.deepSleepPhase = .finalPark(startedAt: now)
+                logEvent("deepSleep.phase", values: [
+                    "phase": "finalPark",
+                    "measured": measuredBody
+                ])
+            }
+
+        case .finalPark(let startedAt):
             desiredBody = settleTarget
             desiredHead = clampHead(0)
-            let reached = hasReachedBodyTarget(measured: measured, target: settleTarget)
-            let timedOut = now.timeIntervalSince(startedAt) >= deepSleepSettleTimeout
-            if reached || timedOut {
-                let direction = initialDeepSleepNudgeDirection(from: measured)
-                let count = max(1, deepSleepNudgeCount)
-                behavior.deepSleepPhase = .nudge(direction: direction, remaining: count, startedAt: now)
-                var values: [String: CustomStringConvertible] = [
-                    "dir": direction,
-                    "remaining": count,
-                    "reason": reached ? "reached" : "timeout"
-                ]
-                if let measured { values["measured"] = measured }
-                logEvent("deepSleep.nudgeStart", values: values)
-            }
-
-        case .nudge(let direction, let remaining, let startedAt):
-            let nudgeTarget = clampBody(settleTarget + direction * deepSleepNudgeAmplitude)
-            desiredBody = nudgeTarget
-            desiredHead = clampHead(0)
-            let reached = hasReachedBodyTarget(measured: measured, target: nudgeTarget)
-            let timedOut = now.timeIntervalSince(startedAt) >= deepSleepNudgeStepTimeout
-            if reached || timedOut {
-                let nextRemaining = remaining - 1
-                if nextRemaining > 0 {
-                    behavior.deepSleepPhase = .nudge(direction: -direction, remaining: nextRemaining, startedAt: now)
-                    var values: [String: CustomStringConvertible] = [
-                        "dir": -direction,
-                        "remaining": nextRemaining
-                    ]
-                    if let measured { values["measured"] = measured }
-                    logEvent("deepSleep.nudgeStep", values: values)
-                } else {
-                    desiredBody = finalizeDeepSleepPark(measured: measured, settleTarget: settleTarget)
-                }
+            let elapsed = now.timeIntervalSince(startedAt)
+            if elapsed >= deepSleepFinalSettleDuration {
+                behavior.deepSleepPhase = .parked(target: settleTarget)
+                logEvent("deepSleep.parked", values: [
+                    "target": settleTarget,
+                    "measured": measuredBody
+                ])
+                logState("deepSleep.parked", values: [
+                    "target": settleTarget,
+                    "measured": measuredBody
+                ])
             }
 
         case .parked(let target):
@@ -1786,11 +1777,7 @@ final class StateMachine {
             desiredHead = clampHead(0)
         }
 
-        let nudgeActive = {
-            if case .nudge = behavior.deepSleepPhase { return true }
-            return false
-        }()
-        let bodyRateCap = nudgeActive ? deepSleepNudgeRateCapDegPerSec : settings.bodyRateCapDegPerSec
+        let bodyRateCap = deepSleepBodyRateCap(for: behavior.deepSleepPhase)
 
         behavior.bodyTarget = approach(
             current: behavior.bodyTarget,
@@ -1804,26 +1791,16 @@ final class StateMachine {
             maxDelta: settings.headRateCapDegPerSec * deltaTime
         ).clamped(to: configuration.head.logicalRange)
     }
-
-    private func initialDeepSleepNudgeDirection(from measured: Double?) -> Double {
-        guard let measured else { return -1 }
-        return measured >= 0 ? -1 : 1
-    }
-
-    private func finalizeDeepSleepPark(measured: Double?, settleTarget: Double) -> Double {
-        let slipLimit = deepSleepParkSlipAllowance
-        let candidate = measured ?? settleTarget
-        let offset = (candidate - settleTarget).clamped(to: -slipLimit...slipLimit)
-        let parked = clampBody(settleTarget + offset)
-        behavior.deepSleepPhase = .parked(target: parked)
-        var values: [String: CustomStringConvertible] = [
-            "target": parked,
-            "offset": offset
-        ]
-        if let measured { values["measured"] = measured }
-        logEvent("deepSleep.parked", values: values)
-        logState("deepSleep.parked", values: ["target": parked, "offset": offset])
-        return parked
+    
+    private func deepSleepBodyRateCap(for phase: DeepSleepPhase?) -> Double {
+        switch phase {
+        case .sweepToEdge, .overshootToCenter:
+            return deepSleepFastRateCapDegPerSec
+        case .finalPark:
+            return deepSleepFinalRateCapDegPerSec
+        default:
+            return settings.bodyRateCapDegPerSec
+        }
     }
     
     private func hasReachedRightHandTarget(measured: Double, target: Double) -> Bool {
