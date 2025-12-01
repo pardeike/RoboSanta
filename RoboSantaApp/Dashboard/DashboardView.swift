@@ -31,12 +31,14 @@ struct DashboardView: View {
     @State private var interactionState: InteractionState = .idle
     @State private var isSpeaking: Bool = false
     @State private var pulseAnimation = false
+    @StateObject private var stdoutMonitor: StdoutMonitor
     
     /// Default initializer using app globals
     init(coordinator: RuntimeCoordinator) {
         self.coordinator = coordinator
         self.queueManager = speechQueueManager
         self.interaction = interactionCoordinator
+        _stdoutMonitor = StateObject(wrappedValue: StdoutMonitor.shared)
     }
     
     /// Full initializer for testing
@@ -44,6 +46,7 @@ struct DashboardView: View {
         self.coordinator = coordinator
         self.queueManager = queueManager
         self.interaction = interaction
+        _stdoutMonitor = StateObject(wrappedValue: StdoutMonitor.shared)
     }
     
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -73,8 +76,10 @@ struct DashboardView: View {
                         // Left column - Camera and servo info
                         VStack(spacing: 16) {
                             cameraPreviewCard
+                                .layoutPriority(2)
                             servoInfoCard
-                            Spacer(minLength: 0)
+                                .layoutPriority(1)
+                            creditsCard
                         }
                         .frame(width: geometry.size.width * 0.4)
                         .frame(maxHeight: .infinity)
@@ -84,20 +89,19 @@ struct DashboardView: View {
                             stateCard
                             queueCard
                             generationCard
-                            Spacer(minLength: 0)
+                            stdoutCard
                         }
                         .frame(width: geometry.size.width * 0.25)
-                        .frame(maxHeight: .infinity)
+                        .frame(maxHeight: .infinity, alignment: .top)
                         
                         // Right column - Statistics and QR (fills vertical space)
                         VStack(spacing: 16) {
                             engagementCard
                             statisticsChartCard
                             qrCodeCard
-                            Spacer(minLength: 0)
                         }
                         .frame(width: geometry.size.width * 0.25)
-                        .frame(maxHeight: .infinity)
+                        .frame(maxHeight: .infinity, alignment: .top)
                     }
                     .padding(.horizontal, 40)
                     .padding(.bottom, 20)
@@ -148,6 +152,7 @@ struct DashboardView: View {
                 BlurredCameraPreview()
                     .environmentObject(visionSource)
                     .cornerRadius(12)
+                    .frame(maxWidth: .infinity)
                     .aspectRatio(16/9, contentMode: .fit)
                 
                 // Face detection overlay is handled by VisionDetectionSource
@@ -432,6 +437,34 @@ struct DashboardView: View {
         }
     }
     
+    // MARK: - Credits Card
+    
+    private var creditsCard: some View {
+        DashboardCard(title: "TEAM", icon: "person.3.fill") {
+            VStack(alignment: .center, spacing: 8) {
+                Text("Created by AI and Andreas Pardeike. Paint job by Joakim Klein")
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .padding(.vertical, 12)
+        }
+        .frame(maxHeight: .infinity)
+    }
+    
+    // MARK: - Stdout Card
+    
+    private var stdoutCard: some View {
+        DashboardCard(title: "LOGG", icon: "terminal.fill") {
+            StdoutLogView(monitor: stdoutMonitor)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(maxHeight: .infinity)
+        .layoutPriority(1)
+    }
+    
     // MARK: - Statistics Card
     
     // MARK: - Engagement Card
@@ -613,9 +646,22 @@ struct DashboardView: View {
     
     private var qrCodeCard: some View {
         DashboardCard(title: "GITHUB", icon: "qrcode") {
-            QRCodeView(size: 200)
-                .frame(maxWidth: .infinity)
+            GeometryReader { geometry in
+                let padding: CGFloat = 20
+                let base = min(geometry.size.width, geometry.size.height)
+                let qrSize = max(80, min(base - padding * 2, base))
+                
+                VStack {
+                    Spacer(minLength: 0)
+                    QRCodeView(size: qrSize)
+                        .frame(width: qrSize, height: qrSize)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.vertical, padding / 2)
+            }
         }
+        .frame(maxHeight: .infinity)
     }
     
     // MARK: - Helpers
@@ -634,6 +680,56 @@ struct DashboardView: View {
         if let ic = interaction {
             stats.updateState(ic.state)
             isSpeaking = ic.isSpeaking
+        }
+    }
+}
+
+// MARK: - Stdout Log View
+
+struct StdoutLogView: View {
+    @ObservedObject var monitor: StdoutMonitor
+    private let lineHeight: CGFloat = 13
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                let visibleCount = maxVisibleLines(for: geometry.size.height)
+                let recentLines = Array(monitor.lines.suffix(visibleCount))
+                
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(recentLines.enumerated()), id: \.offset) { _, line in
+                            Text(line.isEmpty ? " " : line)
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.25))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .lineLimit(1)
+                        }
+                        Color.clear
+                            .frame(height: 1)
+                            .id("stdout-bottom")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+                }
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .onChange(of: monitor.lines.count) { _, _ in
+                    scrollToBottom(proxy)
+                }
+                .onAppear {
+                    scrollToBottom(proxy)
+                }
+            }
+        }
+    }
+    
+    private func maxVisibleLines(for height: CGFloat) -> Int {
+        max(8, Int(height / lineHeight))
+    }
+    
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.15)) {
+            proxy.scrollTo("stdout-bottom", anchor: .bottom)
         }
     }
 }
