@@ -20,12 +20,14 @@ enum SantaColors {
 struct DashboardView: View {
     @EnvironmentObject var visionSource: VisionDetectionSource
     @ObservedObject var coordinator: RuntimeCoordinator
+    @ObservedObject var deepSleepController: DeepSleepController
     let queueManager: SpeechQueueManager
     var interaction: InteractionCoordinator?
     
     @State private var pose = StateMachine.FigurinePose()
     @State private var stats = DashboardStats.shared
     @State private var sessionTime = ""
+    @State private var now = Date()
     @State private var queueCount: Int = 0
     @State private var upcomingTopics: [String] = []
     @State private var interactionState: InteractionState = .idle
@@ -34,16 +36,18 @@ struct DashboardView: View {
     @StateObject private var stdoutMonitor: StdoutMonitor
     
     /// Default initializer using app globals
-    init(coordinator: RuntimeCoordinator) {
+    init(coordinator: RuntimeCoordinator, deepSleepController: DeepSleepController) {
         self.coordinator = coordinator
+        self.deepSleepController = deepSleepController
         self.queueManager = speechQueueManager
         self.interaction = interactionCoordinator
         _stdoutMonitor = StateObject(wrappedValue: StdoutMonitor.shared)
     }
     
     /// Full initializer for testing
-    init(coordinator: RuntimeCoordinator, queueManager: SpeechQueueManager, interaction: InteractionCoordinator?) {
+    init(coordinator: RuntimeCoordinator, deepSleepController: DeepSleepController, queueManager: SpeechQueueManager, interaction: InteractionCoordinator?) {
         self.coordinator = coordinator
+        self.deepSleepController = deepSleepController
         self.queueManager = queueManager
         self.interaction = interaction
         _stdoutMonitor = StateObject(wrappedValue: StdoutMonitor.shared)
@@ -112,6 +116,7 @@ struct DashboardView: View {
             pose = newPose
         }
         .onReceive(timer) { _ in
+            now = Date()
             updateSessionTime()
             updateQueueInfo()
         }
@@ -269,6 +274,8 @@ struct DashboardView: View {
                 Divider()
                     .background(SantaColors.cardBorder)
                 
+                deepSleepRow
+                
                 // Speaking indicator and session time in one row
                 HStack {
                     Circle()
@@ -344,6 +351,43 @@ struct DashboardView: View {
             }
         }
         return Image(systemName: iconName)
+    }
+
+    private func countdownString(to date: Date?) -> String? {
+        guard let date else { return nil }
+        let formatter = DateComponentsFormatter()
+        formatter.unitsStyle = .abbreviated
+        formatter.allowedUnits = [.hour, .minute]
+        formatter.maximumUnitCount = 2
+        let remaining = max(0, date.timeIntervalSince(now))
+        if remaining <= 0 { return "nu" }
+        return formatter.string(from: remaining)
+    }
+
+    private var deepSleepRow: some View {
+        let statusText = deepSleepController.isDeepSleeping ? "Djupsömn aktiv" : "Väntar på djupsömn"
+        let targetDate = deepSleepController.isDeepSleeping ? deepSleepController.nextWakeAt : deepSleepController.nextSleepAt
+        let timeText = countdownString(to: targetDate) ?? "—"
+        let iconName = deepSleepController.isDeepSleeping ? "bed.double.fill" : "moon.stars.fill"
+        let color = deepSleepController.isDeepSleeping ? Color.blue : SantaColors.primaryRed
+
+        return HStack {
+            Image(systemName: iconName)
+                .foregroundColor(color)
+                .font(.system(size: 18, weight: .bold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Djupsömn")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.white.opacity(0.7))
+                Text(statusText)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            Spacer()
+            Text(timeText)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundColor(color)
+        }
     }
     
     // MARK: - Queue Card

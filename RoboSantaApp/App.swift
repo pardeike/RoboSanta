@@ -20,6 +20,10 @@ let coordinator = RuntimeCoordinator(
     )
 )
 
+/// Deep sleep controller to park servos overnight or on demand.
+@MainActor
+let deepSleepController = DeepSleepController(stateMachine: coordinator.stateMachine)
+
 /// Speech queue configuration and manager (used in interactive mode)
 @MainActor
 let speechQueueConfig = SpeechQueueConfiguration.default
@@ -92,6 +96,7 @@ struct MinimalApp: App {
                     
                     // Connect dashboard stats to state machine
                     dashboardStats.connectToStateMachine(coordinator.stateMachine)
+                    deepSleepController.start()
                     
                     if useInteractiveMode {
                         // Interactive mode: use queue-based generation and InteractionCoordinator
@@ -102,7 +107,8 @@ struct MinimalApp: App {
                             stateMachine: coordinator.stateMachine,
                             audioPlayer: audioPlayer,
                             queueManager: speechQueueManager,
-                            config: .default
+                            config: .default,
+                            deepSleepController: deepSleepController
                         )
                         interactionCoordinator?.start()
                         

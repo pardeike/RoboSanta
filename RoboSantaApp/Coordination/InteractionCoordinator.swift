@@ -31,6 +31,7 @@ final class InteractionCoordinator {
     private let audioPlayer: AudioPlayer
     private let queueManager: SpeechQueueManager
     private let config: InteractionConfiguration
+    private let deepSleepController: DeepSleepController?
     
     // MARK: - Detection State
     
@@ -66,12 +67,14 @@ final class InteractionCoordinator {
         stateMachine: StateMachine,
         audioPlayer: AudioPlayer,
         queueManager: SpeechQueueManager,
-        config: InteractionConfiguration
+        config: InteractionConfiguration,
+        deepSleepController: DeepSleepController? = nil
     ) {
         self.stateMachine = stateMachine
         self.audioPlayer = audioPlayer
         self.queueManager = queueManager
         self.config = config
+        self.deepSleepController = deepSleepController
         
         setupSubscriptions()
     }
@@ -130,6 +133,15 @@ final class InteractionCoordinator {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] update in
                 self?.handleDetectionUpdate(update)
+            }
+            .store(in: &cancellables)
+
+        deepSleepController?.$isDeepSleeping
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] sleeping in
+                if sleeping {
+                    self?.enforceDeepSleepPause()
+                }
             }
             .store(in: &cancellables)
     }
@@ -242,6 +254,11 @@ final class InteractionCoordinator {
     private func coordinationTick() async {
         // Update queue state periodically
         updateQueueState()
+
+        if isDeepSleepBlockingInteractions() {
+            enforceDeepSleepPause()
+            return
+        }
         
         switch state {
         case .idle:
@@ -309,6 +326,12 @@ final class InteractionCoordinator {
     }
     
     private func handlePersonDetectedState() async {
+        if isDeepSleepBlockingInteractions() {
+            transition(to: .idle, reason: "deep sleep prevents interaction")
+            updateIdleBehavior()
+            return
+        }
+
         // Respect cooldown between interactions if the last set just finished
         if isConversationCooldownActive() {
             transition(to: .patrolling, reason: "cooldown active before next interaction")
@@ -395,6 +418,12 @@ final class InteractionCoordinator {
     // MARK: - Conversation Playback
     
     private func startConversation() async {
+        if isDeepSleepBlockingInteractions() {
+            transition(to: .idle, reason: "deep sleep prevents conversation")
+            updateIdleBehavior()
+            return
+        }
+
         // Consume a conversation set
         guard let set = queueManager.consumeOldest() else {
             print("🎄 Failed to consume conversation set")
@@ -657,6 +686,31 @@ final class InteractionCoordinator {
         } else {
             conversationCooldownUntil = nil
             return false
+        }
+    }
+
+    private func isDeepSleepBlockingInteractions(now: Date = Date()) -> Bool {
+        guard let controller = deepSleepController else { return false }
+        if controller.isDeepSleeping { return true }
+        if let inhibit = controller.wakeInhibitUntil, now < inhibit { return true }
+        return false
+    }
+
+    private func enforceDeepSleepPause() {
+        if audioPlayer.isPlaying {
+            audioPlayer.stop()
+        }
+        pendingLossAfterCurrentPhrase = false
+        if let set = currentSet {
+            queueManager.releaseCurrentSet(set)
+            currentSet = nil
+            currentSetId = nil
+        }
+        currentPhraseIndex = 0
+        isSpeaking = false
+        if state != .idle {
+            transition(to: .idle, reason: "deep sleep active")
+            updateIdleBehavior()
         }
     }
     

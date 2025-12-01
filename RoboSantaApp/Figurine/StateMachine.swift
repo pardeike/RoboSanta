@@ -30,6 +30,8 @@ final class StateMachine {
         case pointingLectureDone       // Signal to lower
         case suppressWaving            // Suppress automatic waving (for pointing interactions)
         case allowWaving               // Re-enable automatic waving
+        case enterDeepSleep            // Park servos to protect hardware
+        case exitDeepSleep             // Resume normal motion
     }
     
     /// Published when person detection state changes.
@@ -193,6 +195,10 @@ final class StateMachine {
         }
     }
     private enum ServoAxis { case head, body }
+    private enum DeepSleepPhase {
+        case overshoot(target: Double)
+        case settle
+    }
     
     private struct PatrolState {
         var lowerHeading: Double = 0
@@ -253,6 +259,9 @@ final class StateMachine {
         var tracker = OffsetTracker()
         var centerHoldBegan: Date?
 
+        var deepSleepActive = false
+        var deepSleepPhase: DeepSleepPhase?
+
         var leftHandAutoState: LeftHandAutoState = .lowered
         var leftHandTargetAngle: Double?
         var leftHandRaisedTimestamp: Date?
@@ -310,6 +319,7 @@ final class StateMachine {
     private let loggingLevel: LoggingLevel
     private let workerQueue = DispatchQueue(label: "RoboSanta.StateMachine", qos: .userInitiated)
     private let workerQueueKey = DispatchSpecificKey<Void>()
+    private let deepSleepCenterBackoff: Double = 3.0
     
     private var pendingEvents: [Event] = []
     private var behavior: BehaviorState
@@ -516,19 +526,29 @@ final class StateMachine {
                 configureInitialPatrolState(now: now)
                 logState("mode.idle")
 
+            case .enterDeepSleep:
+                activateDeepSleep(now: now)
+
+            case .exitDeepSleep:
+                deactivateDeepSleep(now: now)
+
             case .aimCamera(let angle):
+                guard !behavior.deepSleepActive else { break }
                 behavior.manualOverride = true
                 behavior.manualHeading = clampCamera(angle)
                 logState("mode.manual", values: ["target": angle])
 
             case .clearTarget:
+                guard !behavior.deepSleepActive else { break }
                 behavior.manualOverride = false
                 behavior.manualHeading = nil
 
             case .setLeftHand(let gesture):
+                guard !behavior.deepSleepActive else { break }
                 setLeftGesture(gesture)
 
             case .setRightHand(let gesture):
+                guard !behavior.deepSleepActive else { break }
                 behavior.rightGesture = gesture
 
             case .setIdleBehavior(let newBehavior):
@@ -559,7 +579,7 @@ final class StateMachine {
 
             case .personDetected(let offset, let faceYaw):
                 // Ignore tracking when in minimal idle mode (queue empty).
-                if case .minimalIdle = behavior.idleBehavior {
+                if case .minimalIdle = behavior.idleBehavior, !behavior.deepSleepActive {
                     break
                 }
                 lastDetectedOffset = offset
@@ -568,7 +588,7 @@ final class StateMachine {
 
             case .personLost:
                 // Ignore loss notifications if we're in minimal idle mode.
-                if case .minimalIdle = behavior.idleBehavior {
+                if case .minimalIdle = behavior.idleBehavior, !behavior.deepSleepActive {
                     break
                 }
                 let hadFocus = behavior.focusStart != nil
@@ -594,6 +614,7 @@ final class StateMachine {
                 logState("tracking.lost")
             
             case .startPointingGesture:
+                guard !behavior.deepSleepActive else { break }
                 if behavior.rightHandAutoState == .lowered {
                     behavior.rightHandAutoState = .raisingHalf
                     let halfPosition = configuration.rightHand.logicalRange.midPoint
@@ -602,6 +623,7 @@ final class StateMachine {
                 }
 
             case .pointingAttentionDone:
+                guard !behavior.deepSleepActive else { break }
                 if behavior.rightHandAutoState == .holdingHalf {
                     behavior.rightHandAutoState = .raisingFull
                     let fullPosition = configuration.rightHand.logicalRange.upperBound
@@ -610,6 +632,7 @@ final class StateMachine {
                 }
 
             case .pointingLectureDone:
+                guard !behavior.deepSleepActive else { break }
                 if behavior.rightHandAutoState.canAbortWithLowerCommand {
                     behavior.rightHandAutoState = .lowering
                     let downPosition = configuration.rightHand.logicalRange.lowerBound
@@ -674,17 +697,28 @@ final class StateMachine {
             detectionSubject.send(update)
         }
 
-        if !previouslyVisible && behavior.facesVisible {
+        if !previouslyVisible && behavior.facesVisible && !behavior.deepSleepActive {
             armLeftHandAutopilotIfEligible(now: now)
         }
 
-        if let o = lastDetectedOffset {
+        if let o = lastDetectedOffset, !behavior.deepSleepActive {
             let heading = cameraHeadingEstimateLocked()
             updateTrackingHeading(offset: o, now: now, currentHeading: heading)
         }
     }
     
     private func updatePose(now: Date, deltaTime: TimeInterval) {
+        if behavior.deepSleepActive {
+            updateDeepSleepRelaxation(deltaTime: deltaTime)
+            pose.bodyAngle = behavior.bodyTarget
+            pose.headAngle = behavior.headTarget
+            pose.leftHand = configuration.leftHand.logicalRange.lowerBound
+            pose.rightHand = configuration.rightHand.logicalRange.lowerBound
+            behavior.idleLeftHandOffset = 0
+            behavior.idleRightHandOffset = 0
+            return
+        }
+
         let (desiredHeading, context) = desiredHeading(now: now, deltaTime: deltaTime)
         if orientationNeedsUpdate(for: desiredHeading, context: context) {
             scheduleOrientationChange(to: desiredHeading, context: context, now: now)
@@ -1270,6 +1304,56 @@ final class StateMachine {
         ])
         logState("patrol.target", values: ["heading": heading])
     }
+
+    private func activateDeepSleep(now: Date) {
+        guard !behavior.deepSleepActive else { return }
+        behavior.deepSleepActive = true
+        behavior.clearFocus()
+        behavior.manualOverride = false
+        behavior.manualHeading = nil
+        behavior.trackingHeading = nil
+        behavior.desiredHeading = 0
+        behavior.bodyTarget = 0
+        behavior.headTarget = 0
+        behavior.lastScheduledHeading = 0
+        behavior.currentContext = .manual
+        // Create a small overshoot before settling at center to relieve torque.
+        let currentBody = measuredBodyAngle ?? pose.bodyAngle
+        let direction = (currentBody >= 0) ? 1.0 : -1.0
+        let overshootTarget = clampBody(direction * deepSleepCenterBackoff)
+        behavior.deepSleepPhase = .overshoot(target: overshootTarget)
+        behavior.bodyTarget = overshootTarget
+        behavior.leftGesture = .down
+        behavior.rightGesture = .down
+        behavior.leftHandAutoState = .lowered
+        behavior.leftHandTargetAngle = nil
+        behavior.leftHandAutopilotArmed = false
+        behavior.leftHandCooldownActive = false
+        behavior.leftHandCooldownUntil = nil
+        behavior.rightHandAutoState = .lowered
+        behavior.rightHandTargetAngle = nil
+        behavior.idleLeftHandOffset = 0
+        behavior.idleRightHandOffset = 0
+        behavior.idleLeftHandTargetOffset = 0
+        behavior.idleRightHandTargetOffset = 0
+        behavior.nextIdleLeftMove = nil
+        behavior.nextIdleRightMove = nil
+        idlePhase = 0
+        logEvent("deepSleep.enter")
+        logState("mode.deepSleep")
+    }
+
+    private func deactivateDeepSleep(now: Date) {
+        guard behavior.deepSleepActive else { return }
+        behavior.deepSleepActive = false
+        behavior.deepSleepPhase = nil
+        behavior.manualOverride = false
+        behavior.manualHeading = nil
+        behavior.trackingHeading = nil
+        behavior.clearFocus()
+        logEvent("deepSleep.exit")
+        logState("mode.wake")
+    }
     
     private func setLeftGesture(_ gesture: LeftHandGesture) {
         behavior.leftGesture = gesture
@@ -1344,6 +1428,7 @@ final class StateMachine {
     }
 
     private func armLeftHandAutopilotIfEligible(now: Date) {
+        guard !behavior.deepSleepActive else { return }
         // Suppress auto-greetings when running minimal idle behaviour (queue empty).
         if case .minimalIdle = behavior.idleBehavior { return }
         // Suppress waving during pointing interactions
@@ -1371,6 +1456,7 @@ final class StateMachine {
     }
 
     private func setLeftHandTarget(angle: Double, speed: Double) {
+        if behavior.deepSleepActive { return }
         behavior.leftHandTargetAngle = angle
         behavior.leftHandLastLoggedAngle = nil  // Reset so first position update gets logged
         leftHandDriver.setVelocity(speed)
@@ -1539,11 +1625,49 @@ final class StateMachine {
     // MARK: - Right Hand Autopilot (Pointing)
     
     private func setRightHandTarget(angle: Double, speed: Double) {
+        if behavior.deepSleepActive { return }
         behavior.rightHandTargetAngle = angle
         behavior.rightHandLastLoggedAngle = nil  // Reset so first position update gets logged
         rightHandDriver.setVelocity(speed)
         rightHandDriver.move(toLogical: angle)
         logState("rightHand.target", values: ["angle": angle, "speed": speed])
+    }
+
+    private func hasReachedBodyTarget(measured: Double?, target: Double, tolerance: Double = 0.5) -> Bool {
+        guard let measured else { return false }
+        return abs(measured - target) <= tolerance
+    }
+
+    private func updateDeepSleepRelaxation(deltaTime: TimeInterval) {
+        let settleTarget = clampBody(0)
+        var desiredBody = settleTarget
+
+        switch behavior.deepSleepPhase {
+        case .overshoot(let target):
+            desiredBody = target
+            if hasReachedBodyTarget(measured: measuredBodyAngle, target: target) {
+                behavior.deepSleepPhase = .settle
+            }
+        case .settle:
+            desiredBody = settleTarget
+            if hasReachedBodyTarget(measured: measuredBodyAngle, target: settleTarget) {
+                behavior.deepSleepPhase = nil
+            }
+        case .none:
+            desiredBody = settleTarget
+        }
+
+        behavior.bodyTarget = approach(
+            current: behavior.bodyTarget,
+            target: desiredBody,
+            maxDelta: settings.bodyRateCapDegPerSec * deltaTime
+        ).clamped(to: configuration.body.logicalRange)
+
+        behavior.headTarget = approach(
+            current: behavior.headTarget,
+            target: clampHead(0),
+            maxDelta: settings.headRateCapDegPerSec * deltaTime
+        ).clamped(to: configuration.head.logicalRange)
     }
     
     private func hasReachedRightHandTarget(measured: Double, target: Double) -> Bool {
@@ -1656,6 +1780,9 @@ final class StateMachine {
     }
     
     private func leftHandValue(deltaTime: TimeInterval) -> Double {
+        if behavior.deepSleepActive {
+            return configuration.leftHand.logicalRange.lowerBound
+        }
         // Return the actual measured position if available (for smooth animation during autopilot)
         // Only use measured position when autopilot is active to allow idle offsets to work
         if let measured = behavior.leftHandMeasuredAngle,
@@ -1684,6 +1811,9 @@ final class StateMachine {
     }
     
     private func rightHandValue() -> Double {
+        if behavior.deepSleepActive {
+            return configuration.rightHand.logicalRange.lowerBound
+        }
         // Return the actual measured position if available (for smooth animation during autopilot)
         if let measured = behavior.rightHandMeasuredAngle,
            behavior.rightHandAutoState != .lowered {

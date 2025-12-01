@@ -5,7 +5,7 @@ struct ContentView: View {
     @EnvironmentObject var visionSource: VisionDetectionSource
 
     var body: some View {
-        DashboardView(coordinator: coordinator)
+        DashboardView(coordinator: coordinator, deepSleepController: deepSleepController)
             .environmentObject(visionSource)
     }
 }
