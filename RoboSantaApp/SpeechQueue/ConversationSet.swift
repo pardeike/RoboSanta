@@ -25,6 +25,9 @@ struct ConversationSet: Identifiable, Equatable, Sendable {
     /// The interaction type of this set
     let type: InteractionType
     
+    /// The topic used for this conversation (e.g., "cafeteria", "algoritm")
+    let topic: String
+    
     /// Path to the start phrase audio file.
     /// Note: For pointing type interactions, use `attentionFile` instead.
     let startFile: URL
@@ -96,6 +99,16 @@ struct ConversationSet: Identifiable, Equatable, Sendable {
             interactionType = .unknown
         }
         
+        // Read topic from topic.txt if it exists
+        let topicFileURL = folderURL.appendingPathComponent("topic.txt")
+        let topicString: String
+        if let topic = try? String(contentsOf: topicFileURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+           !topic.isEmpty {
+            topicString = topic
+        } else {
+            topicString = ""
+        }
+        
         // Validate files based on interaction type
         let startURL = folderURL.appendingPathComponent("start.wav")
         let endURL = folderURL.appendingPathComponent("end.wav")
@@ -141,6 +154,7 @@ struct ConversationSet: Identifiable, Equatable, Sendable {
         self.id = folderName
         self.folderURL = folderURL
         self.type = interactionType
+        self.topic = topicString
         self.startFile = startURL
         self.middleFiles = middleURLs
         self.endFile = endURL

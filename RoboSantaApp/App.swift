@@ -6,6 +6,8 @@ private let portraitCameraMode = false
 private let runtime = SantaRuntime.physical
 /// Set to true to use the new queue-based interaction system
 private let useInteractiveMode = true
+/// Set to true to show the dashboard in full-screen mode
+private let fullScreenDashboard = true
 
 /// The runtime coordinator for Santa figurine control.
 /// This replaces the global `santa` StateMachine with a higher-level abstraction.
@@ -38,6 +40,10 @@ let speaker = useInteractiveMode
 @MainActor
 var interactionCoordinator: InteractionCoordinator?
 
+/// Dashboard statistics (shared across the app)
+@MainActor
+let dashboardStats = DashboardStats.shared
+
 @main
 struct MinimalApp: App {
     var body: some Scene {
@@ -45,7 +51,7 @@ struct MinimalApp: App {
             Group {
                 if coordinator.detectionSource.supportsPreview,
                    let visionSource = coordinator.detectionSource as? VisionDetectionSource {
-                    // Physical mode with camera preview
+                    // Physical mode with dashboard
                     ContentView()
                         .environmentObject(visionSource)
                 } else {
@@ -61,6 +67,9 @@ struct MinimalApp: App {
                     // Start the coordinator first
                     try await coordinator.start()
                     print("🎅 RoboSanta started in \(coordinator.currentRuntime) mode")
+                    
+                    // Connect dashboard stats to state machine
+                    dashboardStats.connectToStateMachine(coordinator.stateMachine)
                     
                     if useInteractiveMode {
                         // Interactive mode: use queue-based generation and InteractionCoordinator
@@ -87,5 +96,7 @@ struct MinimalApp: App {
                 }
             }
         }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1440, height: 900)
     }
 }

@@ -70,6 +70,9 @@ Svara endast med JSON som matchar schemat.
             
             if queueManager.shouldPauseGeneration {
                 print("🎅 SantaSpeaker: Queue full (\(queueManager.queueCount) sets), waiting...")
+                await MainActor.run {
+                    DashboardStats.shared.updateGenerationStatus("Kö full, väntar...")
+                }
                 let pauseNanos = UInt64(queueConfig.queueFullCheckIntervalSeconds) * 1_000_000_000
                 try? await Task.sleep(nanoseconds: pauseNanos)
                 continue
@@ -80,6 +83,9 @@ Svara endast med JSON som matchar schemat.
             
             // Throttle generation
             if queueConfig.generationThrottleSeconds > 0 {
+                await MainActor.run {
+                    DashboardStats.shared.updateGenerationStatus("Väntar på nästa...")
+                }
                 let throttleNanos = UInt64(queueConfig.generationThrottleSeconds) * 1_000_000_000
                 try? await Task.sleep(nanoseconds: throttleNanos)
             }
@@ -110,6 +116,14 @@ Svara endast med JSON som matchar schemat.
         var interactionName = "unknown"
         var success = false
         
+        // Update dashboard with generation status and current topic
+        let generationNames = ["Pepp", "Hälsning", "Quiz", "Skämt", "Pekning"]
+        let statusText = "Genererar \(generationNames[interactionType])..."
+        await MainActor.run {
+            DashboardStats.shared.updateGenerationStatus(statusText)
+            DashboardStats.shared.updateCurrentTopic(randomTopic)
+        }
+        
         switch interactionType {
         case 0:
             // Pepp Talk - simple single phrase, no farewell needed
@@ -119,6 +133,7 @@ Svara endast med JSON som matchar schemat.
             do {
                 let r: PeppOut = try await thinker.generate(template: peppTemplate, topicAction: randomTopicAction, topic: randomTopic, model: peppTalkSchema, options: opts)
                 try writeTypeFile("pepp", to: setFolder)
+                try writeTopicFile(randomTopic, to: setFolder)
                 success = await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.happyPhrase)
                 // No end.wav - pepp talks don't have farewells
             } catch {
@@ -133,6 +148,7 @@ Svara endast med JSON som matchar schemat.
             do {
                 let r: GreetOut = try await thinker.generate(template: passByTemplate, topicAction: randomTopicAction, topic: randomTopic, model: passByAndGreetSchema, options: opts)
                 try writeTypeFile("greeting", to: setFolder)
+                try writeTopicFile(randomTopic, to: setFolder)
                 let ttsSuccess1 = await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
                 let ttsSuccess2 = await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), r.conversationPhrase)
                 let ttsSuccess3 = await generateTTSToFile(setFolder.appendingPathComponent("end.wav"), r.goodbyePhrase)
@@ -152,6 +168,7 @@ Svara endast med JSON som matchar schemat.
                     if q.isEmpty || Set([a1,a2,a3]).count < 3 { continue }
                     
                     try writeTypeFile("quiz", to: setFolder)
+                    try writeTopicFile(randomTopic, to: setFolder)
                     let ttsSuccess1 = await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
                     let ttsSuccess2 = await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), "Tid för en quiz: " + q)
                     let ttsSuccess3 = await generateTTSToFile(setFolder.appendingPathComponent("middle2.wav"), "A: " + a1)
@@ -177,6 +194,7 @@ Svara endast med JSON som matchar schemat.
             do {
                 let r: JokeOut = try await thinker.generate(template: jokeTemplate, topicAction: randomTopicAction, topic: randomTopic, model: jokeSchema, options: opts)
                 try writeTypeFile("joke", to: setFolder)
+                try writeTopicFile(randomTopic, to: setFolder)
                 let ttsSuccess1 = await generateTTSToFile(setFolder.appendingPathComponent("start.wav"), r.helloPhrase)
                 let ttsSuccess2 = await generateTTSToFile(setFolder.appendingPathComponent("middle1.wav"), r.secret)
                 let ttsSuccess3 = await generateTTSToFile(setFolder.appendingPathComponent("middle2.wav"), r.compliment)
@@ -194,6 +212,7 @@ Svara endast med JSON som matchar schemat.
             do {
                 let r: PointOut = try await thinker.generate(template: pointingTemplate, topicAction: randomTopicAction, topic: randomTopic, model: pointingSchema, options: opts)
                 try writeTypeFile("pointing", to: setFolder)
+                try writeTopicFile(randomTopic, to: setFolder)
                 let ttsSuccess1 = await generateTTSToFile(setFolder.appendingPathComponent("attention.wav"), r.attentionPhrase)
                 let ttsSuccess2 = await generateTTSToFile(setFolder.appendingPathComponent("lecture.wav"), r.lecturePhrase)
                 success = ttsSuccess1 && ttsSuccess2
@@ -209,12 +228,18 @@ Svara endast med JSON som matchar schemat.
         if !success {
             try? FileManager.default.removeItem(at: setFolder)
             print("🎅 SantaSpeaker: Generation failed for set \(timestamp) [\(interactionName)]")
+            await MainActor.run {
+                DashboardStats.shared.updateGenerationStatus("Generering misslyckades")
+            }
         }
         
         // Refresh queue count and log the updated size
         let newCount = queueManager.scanQueue().count
         if success {
             print("🎅 SantaSpeaker: Generated set \(timestamp) [\(interactionName)] (queue now \(newCount))")
+            await MainActor.run {
+                DashboardStats.shared.updateGenerationStatus("Klar (\(newCount) i kö)")
+            }
         }
         
         return success
@@ -224,6 +249,12 @@ Svara endast med JSON som matchar schemat.
     private func writeTypeFile(_ type: String, to folder: URL) throws {
         let typeFile = folder.appendingPathComponent("type.txt")
         try type.write(to: typeFile, atomically: true, encoding: .utf8)
+    }
+    
+    /// Writes the topic to topic.txt in the conversation set folder.
+    private func writeTopicFile(_ topic: String, to folder: URL) throws {
+        let topicFile = folder.appendingPathComponent("topic.txt")
+        try topic.write(to: topicFile, atomically: true, encoding: .utf8)
     }
     
     /// Generates TTS audio and saves directly to a file.

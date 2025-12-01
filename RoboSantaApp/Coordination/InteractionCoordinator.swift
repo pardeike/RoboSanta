@@ -306,6 +306,10 @@ final class InteractionCoordinator {
         // Verify person is still engaged
         guard isPersonPresentForGreeting() else {
             transition(to: .patrolling, reason: "person no longer detected for greeting")
+            // Person was detected but left without engaging
+            Task { @MainActor in
+                DashboardStats.shared.recordIgnored()
+            }
             return
         }
         
@@ -325,6 +329,13 @@ final class InteractionCoordinator {
         // Clean up and return to appropriate state
         if let set = currentSet {
             queueManager.moveToCompleted(set)
+            
+            // Record partial engagement (person left during interaction)
+            Task { @MainActor in
+                DashboardStats.shared.recordInteraction(type: set.type)
+                DashboardStats.shared.recordEngagement(completed: false)
+            }
+            
             currentSet = nil
         }
         
@@ -383,6 +394,11 @@ final class InteractionCoordinator {
         currentSetId = set.id
         currentPhraseIndex = 0
         lastLookingTime = nil
+        
+        // Record person engagement in dashboard stats
+        Task { @MainActor in
+            DashboardStats.shared.recordPersonEngaged()
+        }
         
         print("🎄 Starting conversation with set: \(set.id) [type: \(set.type)]")
         
@@ -451,14 +467,14 @@ final class InteractionCoordinator {
         if !attentive {
             print("🎄 Person not engaged after greeting; skipping conversation")
             await playFarewell()
-            await cleanupConversation()
+            await cleanupConversation(completed: false)
             return
         }
         
         if pendingLossAfterCurrentPhrase {
             print("🚪 Person already lost during greeting; ending conversation after greeting")
             pendingLossAfterCurrentPhrase = false
-            await cleanupConversation()
+            await cleanupConversation(completed: false)
             return
         }
         
@@ -466,7 +482,7 @@ final class InteractionCoordinator {
         if !set.middleFiles.isEmpty {
             let shouldContinue = await playMiddlePhrases(set: set)
             if !shouldContinue {
-                await cleanupConversation()
+                await cleanupConversation(completed: false)
                 return
             }
         }
@@ -476,7 +492,7 @@ final class InteractionCoordinator {
             await playFarewell()
         }
         
-        await cleanupConversation()
+        await cleanupConversation(completed: true)
     }
     
     /// Plays a pointing interaction with synchronized arm gestures.
@@ -567,10 +583,17 @@ final class InteractionCoordinator {
         }
     }
     
-    private func cleanupConversation() async {
+    private func cleanupConversation(completed: Bool = true) async {
         if let set = currentSet {
             queueManager.moveToCompleted(set)
             print("🎄 Moved set \(set.id) to completed")
+            
+            // Record interaction in dashboard stats
+            Task { @MainActor in
+                DashboardStats.shared.recordInteraction(type: set.type)
+                // Record engagement level based on completion status
+                DashboardStats.shared.recordEngagement(completed: completed)
+            }
         }
         
         currentSet = nil
