@@ -1,5 +1,7 @@
 # VIRTUAL.md - Virtual Santa Implementation Guide
 
+> **⚠️ HISTORICAL DOCUMENT**: This feature has been fully implemented. This document served as the implementation guide and is preserved for reference. See `RuntimeCoordinator.swift`, `SantaRig.swift`, `VirtualServoDriver.swift`, and the `Detection/` folder for the actual implementation.
+
 This document is an **implementation guide** for AI agents to create a virtual santa figurine that mirrors the physical hardware. Read this alongside `AGENTS.md` which provides codebase context.
 
 ## Goal

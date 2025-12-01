@@ -1,5 +1,7 @@
 # Pointing Hand Feature – Implementation Guide
 
+> **⚠️ HISTORICAL DOCUMENT**: This feature has been fully implemented. This document served as the implementation guide and is preserved for reference. See the current codebase for the actual implementation.
+
 This document provides a comprehensive guide for implementing the pointing hand feature in RoboSanta. It is designed to be followed by an AI agent to implement the feature without introducing regressions.
 
 ---

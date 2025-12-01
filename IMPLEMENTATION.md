@@ -71,9 +71,9 @@ This document is an information pack for future contributors (human or AI) expla
 ---
 
 ## Configuration Defaults (key ones)
-- **Queue**: max 20, min 5, generation throttle 180s, DONE retention 50.
-- **Engagement**: yaw tolerance 5° (strict), post-greeting tolerance 25° (lenient), detection duration 1s, farewell skip threshold 3s, look-away timeout 2s.
-- **Motion**: head rate cap 250 deg/s, body rate cap 50 deg/s, patrol pause after loss 1.5s, minimal idle sway ~6° amplitude, period ~7s, body not locked.
+- **Queue**: max 500, min 5, generation throttle 0s (continuous), DONE retention 50.
+- **Engagement**: yaw tolerance 5° (strict), post-greeting tolerance 35° (lenient), detection duration 1s, farewell skip threshold 3s, look-away timeout 2s, post-conversation cooldown 4s.
+- **Motion**: head rate cap 250 deg/s, body rate cap 50 deg/s, patrol pause after loss 1.0-2.0s range, minimal idle sway ~6° amplitude, period ~7s, body not locked.
 - **Gestures**: left-hand wave cycles 2, wave speed 500, raise 200, lower 120, pause at top 0.75s, min cooldown 4s (tunable).
 
 ---
