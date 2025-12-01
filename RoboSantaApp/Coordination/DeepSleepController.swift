@@ -10,6 +10,7 @@ final class DeepSleepController: ObservableObject {
     private var timer: Timer?
     private var spaceMonitor: Any?
     private var personCurrentlyDetected = false
+    private var pendingWakeRetry: DispatchWorkItem?
     @Published private(set) var wakeInhibitUntil: Date?
 
     private let sleepStartHour = 19
@@ -39,6 +40,8 @@ final class DeepSleepController: ObservableObject {
         }
         spaceMonitor = nil
         cancellables.removeAll()
+        pendingWakeRetry?.cancel()
+        pendingWakeRetry = nil
         wakeInhibitUntil = nil
     }
 
@@ -62,6 +65,7 @@ final class DeepSleepController: ObservableObject {
         guard update.personDetected else { return }
         guard isWakeAllowed(at: update.timestamp) else { return }
         if let inhibit = wakeInhibitUntil, update.timestamp < inhibit {
+            scheduleWakeRetry(at: inhibit)
             return
         }
         exitDeepSleep(reason: "face_detected")
@@ -82,6 +86,7 @@ final class DeepSleepController: ObservableObject {
         refreshScheduleAnchors(now: now)
         if isDeepSleeping, personCurrentlyDetected, isWakeAllowed(at: now) {
             if let inhibit = wakeInhibitUntil, now < inhibit {
+                scheduleWakeRetry(at: inhibit)
                 return
             }
             exitDeepSleep(reason: "face_detected")
@@ -114,6 +119,8 @@ final class DeepSleepController: ObservableObject {
         guard isDeepSleeping else { return }
         isDeepSleeping = false
         wakeInhibitUntil = nil
+        pendingWakeRetry?.cancel()
+        pendingWakeRetry = nil
         print("🌅 Deep sleep ended (\(reason))")
         stateMachine.send(.exitDeepSleep)
         refreshScheduleAnchors()
@@ -145,5 +152,26 @@ final class DeepSleepController: ObservableObject {
             matching: components,
             matchingPolicy: .nextTimePreservingSmallerComponents
         )
+    }
+
+    private func scheduleWakeRetry(at date: Date) {
+        pendingWakeRetry?.cancel()
+        let delay = max(0, date.timeIntervalSinceNow)
+        let work = DispatchWorkItem { [weak self] in
+            self?.retryWakeIfEligible()
+        }
+        pendingWakeRetry = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func retryWakeIfEligible(now: Date = Date()) {
+        guard isDeepSleeping else { return }
+        guard personCurrentlyDetected else { return }
+        guard isWakeAllowed(at: now) else { return }
+        if let inhibit = wakeInhibitUntil, now < inhibit {
+            scheduleWakeRetry(at: inhibit)
+            return
+        }
+        exitDeepSleep(reason: "face_detected_retry")
     }
 }
