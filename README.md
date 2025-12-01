@@ -1,6 +1,6 @@
 # 🎅 RoboSanta - Interactive Santa Claus Animatronics
 
-An interactive Santa Claus animatronic figurine that uses AI to engage with people passing by in an office corridor. Built with Swift 6 and powered by computer vision, text-to-speech, and servo-controlled movement.
+An interactive Santa Claus animatronic figurine that uses AI to engage with people passing by in an office corridor. Built with Swift 5 and powered by computer vision, text-to-speech, and servo-controlled movement.
 
 ## 🎯 Project Purpose
 
@@ -14,7 +14,7 @@ RoboSanta is designed to entertain and delight people as they walk through offic
 
 ## 🛠️ Technology Stack
 
-- **Language**: Swift 6
+- **Language**: Swift 5
 - **Platform**: macOS
 - **Hardware**: 
   - Phidget RC servos (4 channels: head, body, left hand, right hand)
@@ -35,12 +35,36 @@ RoboSanta is designed to entertain and delight people as they walk through offic
 
 ```
 RoboSantaApp/
-├── App.swift                    # Main entry point and content generation
-├── CameraManager.swift          # Face detection and tracking
+├── App.swift                    # Main entry point and configuration
+├── RuntimeCoordinator.swift     # Coordinates rig and detection source
+├── SantaRig.swift               # High-level figurine control (Physical/Virtual)
+├── SantaSpeaker.swift           # AI content generation and queue management
+├── CameraManager.swift          # Camera handling (legacy)
+├── CameraPreview.swift          # Camera preview UI
 ├── Tools.swift                  # Utility functions and protocols
+├── SharedExtensions.swift       # Common Swift extensions
+├── Audio/                       # Audio playback
+│   └── AudioPlayer.swift        # Async WAV playback
+├── Coordination/                # Interaction orchestration
+│   ├── InteractionCoordinator.swift  # Coordinates speech + detection
+│   ├── InteractionState.swift   # Interaction state definitions
+│   ├── InteractionConfiguration.swift # Configurable thresholds
+│   └── DeepSleepController.swift # Overnight servo parking
+├── Dashboard/                   # Runtime monitoring UI
+│   ├── DashboardView.swift      # Main dashboard display
+│   └── DashboardStats.swift     # Statistics tracking
+├── Detection/                   # Person detection abstraction
+│   ├── PersonDetectionSource.swift  # Detection protocol
+│   ├── VisionDetectionSource.swift  # Camera-based detection
+│   ├── VirtualDetectionSource.swift # Simulated detection
+│   ├── DetectionRouter.swift    # Routes detection to StateMachine
+│   └── PersonGenerator.swift    # Virtual person simulation
 ├── Figurine/                    # Physical figurine control
-│   ├── StateMachine.swift       # Main control logic for servos
+│   ├── StateMachine.swift       # Main control logic (~2000 lines)
 │   ├── StateMachineSettings.swift # Configuration parameters
+│   ├── ServoDriver.swift        # Servo abstraction protocol
+│   ├── PhidgetServoDriver.swift # Physical servo implementation
+│   ├── VirtualServoDriver.swift # Simulated servo implementation
 │   ├── TelemetryLogger.swift    # Logging and diagnostics
 │   ├── Handlers.swift           # Phidget event handlers
 │   └── Functions.swift          # Servo control functions
@@ -52,8 +76,12 @@ RoboSantaApp/
 │   ├── ElevenLabs.swift         # ElevenLabs TTS
 │   ├── RoboSantaTTS.swift       # Custom TTS integration
 │   ├── TTSServer.swift          # Python TTS server manager
-│   ├── Shared.swift             # Common interfaces (Think, SantaVoice)
+│   ├── Shared.swift             # Common interfaces (PromptTemplate)
 │   └── PromptModels.swift       # Prompt templates and schemas
+├── SpeechQueue/                 # Filesystem-based speech queue
+│   ├── SpeechQueueManager.swift # Queue management
+│   ├── SpeechQueueConfiguration.swift # Queue settings
+│   └── ConversationSet.swift    # Conversation set validation
 ├── Phidget22/                   # Phidget hardware interfaces
 └── tts-server.py                # Python TTS server
 ```
@@ -63,22 +91,32 @@ RoboSantaApp/
 1. **Protocol-Oriented Design**:
    - `Think` protocol for AI text generation
    - `SantaVoice` protocol for text-to-speech
-   - Enables easy swapping of implementations
+   - `SantaRig` protocol for figurine control (Physical/Virtual)
+   - `ServoDriver` protocol for servo abstraction
+   - `PersonDetectionSource` protocol for detection abstraction
+   - Enables easy swapping of implementations and hardware-free testing
 
 2. **State Machine Pattern**: 
    - `StateMachine` coordinates servo movements
    - Handles tracking, idle behaviors, and gestures
+   - `InteractionCoordinator` manages conversation state
 
 3. **Event-Driven Architecture**:
    - Events trigger state changes (person detected/lost, gesture commands)
    - Async processing with Swift concurrency
+   - Combine publishers for detection updates
+
+4. **Filesystem Queue Pattern**:
+   - `SpeechQueueManager` manages pre-generated conversation sets
+   - Decouples AI generation from interactive playback
+   - Enables smooth interactions without generation delays
 
 ## 🚀 Setup and Installation
 
 ### Prerequisites
 
 1. **macOS** with Xcode installed
-2. **Swift 6** toolchain
+2. **Swift 5** toolchain
 3. **Python 3.11** (via Homebrew):
    ```bash
    brew install python@3.11
@@ -124,10 +162,10 @@ RoboSantaApp/
 
 1. Connect Phidget servo controller via USB
 2. Connect 4 servos to channels:
-   - Channel 0: Head rotation
-   - Channel 1: Body rotation
-   - Channel 2: Left hand
-   - Channel 3: Right hand
+   - Channel 0: Left hand
+   - Channel 1: Right hand
+   - Channel 2: Head rotation
+   - Channel 3: Body rotation
 3. Ensure servos are powered and within operating ranges
 
 ### Camera Setup
@@ -154,22 +192,22 @@ Simply build and run the project. The system will:
 
 ### Configuring AI Behavior
 
-Edit `App.swift` to choose AI integration:
+Edit `SantaSpeaker.swift` to choose AI integration:
 
 ```swift
 // Choose one:
-static let thinker: Think = AppleIntelligence()
-// static let thinker: Think = Koala()
-// static let thinker: Think = OllamaThink(modelName: "qwen3:8b")
+let thinker: Think = AppleIntelligence()
+// let thinker: Think = Koala()
+// let thinker: Think = OllamaThink(modelName: "qwen3:8b")
 ```
 
 ### Configuring TTS
 
-Edit `App.swift` to choose TTS method:
+Edit `SantaSpeaker.swift` to choose TTS method:
 
 ```swift
-static let voice: SantaVoice = RoboSantaTTS()
-// static let voice: SantaVoice = ElevenLabs()
+let voice: SantaVoice = RoboSantaTTS()
+// let voice: SantaVoice = ElevenLabs()
 ```
 
 ### Adjusting Servo Behavior
@@ -188,6 +226,7 @@ RoboSanta generates several types of interactions:
 2. **Greeting**: Quick hello, conversation starter, goodbye
 3. **Quiz**: Short trivia question with three choices
 4. **Joke**: Playful secret and compliment
+5. **Pointing**: Attention phrase + lecture with synchronized arm gesture
 
 Each uses AI to generate contextually relevant Swedish text based on random topics.
 
@@ -206,12 +245,13 @@ Key parameters in `StateMachineSettings.swift`:
 
 ### Prompt Templates
 
-Customize in `App.swift`:
+Customize in `SantaSpeaker.swift`:
 - `baseSystem`: Core AI instructions (Swedish language, style)
 - `passByTemplate`: Quick corridor greetings
 - `peppTemplate`: Encouraging messages
 - `quizTemplate`: Trivia questions
 - `jokeTemplate`: Playful jokes
+- `pointingTemplate`: Point-and-lecture interactions
 
 ## 🐛 Troubleshooting
 

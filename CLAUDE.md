@@ -18,15 +18,14 @@ AGENTS.md contains:
 
 ## 🚧 Current Development
 
-**Major Refactoring**: [IMPLEMENTATION.md](IMPLEMENTATION.md)
+**Implementation Reference**: [IMPLEMENTATION.md](IMPLEMENTATION.md)
 
-IMPLEMENTATION.md describes the ongoing integration of SantaSpeaker with StateMachine:
-- Overall system architecture for interactive conversations
-- Detailed work breakdown (12 discrete units)
-- Filesystem-based queue design
+IMPLEMENTATION.md describes the current interactive RoboSanta system architecture:
+- Filesystem-based speech queue system
+- InteractionCoordinator orchestration
+- Detection and engagement logic
 - State machine coordination
-- Face angle detection integration
-- Testing and migration strategy
+- Configuration defaults and troubleshooting
 
 ## 🎯 Quick Start Checklist
 
@@ -44,22 +43,29 @@ Before making any changes:
 ## 📁 Key Files
 
 ### Entry Points
-- **App.swift** - Application entry and AI integration
-- **RuntimeCoordinator.swift** - Component orchestration
+- **App.swift** - Application entry and configuration
+- **RuntimeCoordinator.swift** - Coordinates rig + detection source
+- **SantaRig.swift** - High-level figurine control (Physical/Virtual)
 
 ### Core Components
-- **StateMachine.swift** (1493 lines) - Servo control and person tracking
-- **SantaSpeaker.swift** - Speech generation (being refactored)
-- **DetectionRouter.swift** - Person detection coordination
+- **StateMachine.swift** (~2000 lines) - Servo control and person tracking
+- **SantaSpeaker.swift** - Speech generation with queue-based mode
+- **InteractionCoordinator.swift** - Coordinates speech + detection + gestures
+- **DetectionRouter.swift** - Routes detection to StateMachine
 
 ### Configuration
 - **StateMachineSettings.swift** - All tunable parameters
+- **InteractionConfiguration.swift** - Interaction thresholds
 - **Tools.swift** - Helper protocols (Think, SantaVoice)
+
+### Speech Queue
+- **SpeechQueueManager.swift** - Filesystem queue management
+- **ConversationSet.swift** - Conversation set validation
 
 ## ⚠️ Critical Warnings
 
 1. **Never modify `Phidget22/` directory** - auto-generated bindings
-2. **StateMachine.swift is complex** - 1493 lines, be extremely careful
+2. **StateMachine.swift is complex** - ~2000 lines, be extremely careful
 3. **Always use Settings structs** - no hardcoded values
 4. **Respect async/await** - don't use completion handlers
 5. **Thread safety matters** - StateMachine has dedicated queue
