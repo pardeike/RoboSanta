@@ -20,12 +20,26 @@ class TTSServer {
     private var readinessState: ReadinessState = .pending
     private var readinessTimeoutTask: Task<Void, Never>?
     private let readinessTimeout: TimeInterval = 120
+    private let restartInterval: TimeInterval = 3600 // Periodically purge Python memory use
+    private var lastLaunchDate = Date()
+    private var isRestarting = false
+    private var suppressTerminationHandler = false
     
     init() {
+        startServer()
+    }
+    
+    private func startServer() {
         if checkExistingServer() {
             print("Reusing existing tts-server.")
+            lastLaunchDate = Date()
             return
         }
+        launchNewProcess()
+    }
+    
+    private func launchNewProcess() {
+        resetReadinessTracking()
         
         let scriptDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // RoboSantaApp/Integrations
@@ -57,6 +71,9 @@ class TTSServer {
         
         process.terminationHandler = { [weak self] proc in
             guard let self else { return }
+            if self.suppressTerminationHandler {
+                return
+            }
             if proc.terminationStatus != 0 {
                 print("tts-server exited with status \(proc.terminationStatus)")
             }
@@ -71,11 +88,63 @@ class TTSServer {
         do {
             try process.run()
             self.process = process
+            lastLaunchDate = Date()
             scheduleReadinessTimeout()
         } catch {
             print("Failed to start tts-server: \(error)")
             completeReadiness(success: false, message: "Failed to start tts-server.")
         }
+    }
+    
+    private func resetReadinessTracking() {
+        readinessTimeoutTask?.cancel()
+        readinessTimeoutTask = nil
+        outputQueue.sync {
+            stdoutBuffer.removeAll()
+            isServerReady = false
+            readinessState = .pending
+            readinessContinuations.removeAll()
+        }
+    }
+    
+    private func shutdownProcess() async {
+        guard let proc = process else { return }
+        proc.terminationHandler = nil
+        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
+        stderrPipe?.fileHandleForReading.readabilityHandler = nil
+        proc.terminate()
+        
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                proc.waitUntilExit()
+                continuation.resume()
+            }
+        }
+        
+        process = nil
+        stdoutPipe = nil
+        stderrPipe = nil
+    }
+    
+    private func restartServer(reason: String) async -> Bool {
+        if isRestarting {
+            return await awaitReadiness()
+        }
+        
+        isRestarting = true
+        suppressTerminationHandler = true
+        print("Restarting tts-server (\(reason)).")
+        await shutdownProcess()
+        suppressTerminationHandler = false
+        launchNewProcess()
+        let ready = await awaitReadiness()
+        isRestarting = false
+        return ready
+    }
+    
+    private func shouldRestartForAge() -> Bool {
+        let uptime = Date().timeIntervalSince(lastLaunchDate)
+        return uptime >= restartInterval
     }
     
     private func checkExistingServer() -> Bool {
@@ -85,6 +154,14 @@ class TTSServer {
     }
     
     func waitUntilReady() async -> Bool {
+        if shouldRestartForAge() {
+            let uptime = Int(Date().timeIntervalSince(lastLaunchDate))
+            return await restartServer(reason: "periodic purge after \(uptime)s")
+        }
+        return await awaitReadiness()
+    }
+    
+    private func awaitReadiness() async -> Bool {
         let state = outputQueue.sync { readinessState }
         switch state {
         case .ready:
