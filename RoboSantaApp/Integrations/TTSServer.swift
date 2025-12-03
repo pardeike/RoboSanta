@@ -54,10 +54,7 @@ class TTSServer {
         process.arguments = ["tts-server.py"]
         process.currentDirectoryURL = scriptDirectory
         
-        var env = loginShellEnvironment()
-        env["PATH"] = (env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin") + ":/opt/homebrew/bin"
-        env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
-        process.environment = env
+        process.environment = sanitizedEnvironment()
         
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -242,9 +239,7 @@ class TTSServer {
     }
     
     private func isServerReachable(timeout: TimeInterval = 2) -> Bool {
-        // Try to connect to server - we expect a 404 for a non-existent UUID
-        // but this confirms the server is running and responding
-        guard let url = URL(string: "http://127.0.0.1:8080/00000000-0000-0000-0000-000000000000") else { return false }
+        guard let url = URL(string: "http://127.0.0.1:8080/healthz") else { return false }
         let semaphore = DispatchSemaphore(value: 0)
         var reachable = false
         
@@ -330,6 +325,26 @@ class TTSServer {
                 env[key] = value
             }
         }
+        return env
+    }
+
+    private func sanitizedEnvironment() -> [String:String] {
+        var env = loginShellEnvironment()
+        env["PATH"] = (env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin") + ":/opt/homebrew/bin"
+        env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
+        env["PYTHONUNBUFFERED"] = "1"
+
+        // Avoid inheriting corporate proxy settings that break local TTS startup.
+        for key in ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"] {
+            env.removeValue(forKey: key)
+        }
+        env["NO_PROXY"] = "127.0.0.1,localhost"
+        env["no_proxy"] = "127.0.0.1,localhost"
+
+        // Force offline mode so HuggingFace never tries to reach the network when loading cached models.
+        env["HF_HUB_OFFLINE"] = env["HF_HUB_OFFLINE"] ?? "1"
+        env["TRANSFORMERS_OFFLINE"] = env["TRANSFORMERS_OFFLINE"] ?? "1"
+        env["HF_HUB_DISABLE_TELEMETRY"] = env["HF_HUB_DISABLE_TELEMETRY"] ?? "1"
         return env
     }
 }

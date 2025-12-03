@@ -28,6 +28,10 @@ final class StdoutMonitor: ObservableObject {
         
         let pipe = Pipe()
         stdoutPipe = pipe
+
+        // Ensure stdout/stderr are unbuffered so GUI launches (no attached TTY) still flush immediately.
+        setvbuf(stdout, nil, _IONBF, 0)
+        setvbuf(stderr, nil, _IONBF, 0)
         
         originalStdout = dup(STDOUT_FILENO)
         if originalStdout != -1 {

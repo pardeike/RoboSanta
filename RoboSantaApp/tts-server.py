@@ -14,6 +14,15 @@ import torch
 import torch.nn.functional as F 
 import torchaudio as ta
 
+# Ensure the server stays offline-friendly even if corporate proxy env vars leak in.
+for key in ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"]:
+    os.environ.pop(key, None)
+os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
+os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+
 os.environ["TQDM_DISABLE"] = "1"
 from transformers.utils import logging as hf_logging
 from diffusers.utils import logging as df_logging
@@ -207,6 +216,14 @@ class TTSServerHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self):
+        # Health check endpoint used by the macOS launcher; avoids noisy 404 logs.
+        if self.path.rstrip("/") == "/healthz":
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            return
+
         # Extract UUID from path (e.g., /uuid or /uuid.wav)
         path = self.path.lstrip("/")
         
