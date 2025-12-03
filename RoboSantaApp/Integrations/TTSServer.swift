@@ -143,6 +143,7 @@ class TTSServer {
     }
     
     private func shouldRestartForAge() -> Bool {
+        guard let proc = process, proc.isRunning else { return false }
         let uptime = Date().timeIntervalSince(lastLaunchDate)
         return uptime >= restartInterval
     }
@@ -154,11 +155,33 @@ class TTSServer {
     }
     
     func waitUntilReady() async -> Bool {
+        let state = outputQueue.sync { readinessState }
+        
+        // Recover from failed launches so we do not get stuck forever.
+        if state == .failed {
+            return await restartServer(reason: "previous start failed or server stopped")
+        }
+        
+        // If a launch is already in progress, keep waiting unless the process died.
+        if state == .pending {
+            let running = process?.isRunning ?? false
+            if !running && !isServerReachable() {
+                return await restartServer(reason: "server stopped during startup")
+            }
+            return await awaitReadiness()
+        }
+        
+        // At this point we believe the server is ready; verify liveness and age.
+        if !isServerReachable() {
+            return await restartServer(reason: "server unreachable")
+        }
+        
         if shouldRestartForAge() {
             let uptime = Int(Date().timeIntervalSince(lastLaunchDate))
             return await restartServer(reason: "periodic purge after \(uptime)s")
         }
-        return await awaitReadiness()
+        
+        return true
     }
     
     private func awaitReadiness() async -> Bool {
