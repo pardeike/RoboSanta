@@ -42,6 +42,28 @@ struct ElevenLabs: SantaVoice {
         let voice_settings: VoiceSettings
         let previous_text: String
     }
+
+    private func makeRequest(apiKey: String, text: String) throws -> URLRequest {
+        let url = "https://api-global-preview.elevenlabs.io/v1/text-to-speech/\(voiceID)?output_format=\(outputFormat)&optimize_streaming_latency=4"
+        var req = URLRequest(url: URL(string: url)!)
+        req.httpMethod = "POST"
+        req.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(Input(
+            text: text,
+            model_id: modelID,
+            language_code: language,
+            voice_settings: VoiceSettings(
+                stability: stability,
+                use_speaker_boost: true,
+                similarity_boost: similarity,
+                style: style,
+                speed: speed
+            ),
+            previous_text: "Ho, ho, ho. God Jul!"
+        ))
+        return req
+    }
     
     func tts(_ file: String, _ text: String) async {
         guard let apiKey = getAPIKey("Elevenlabs API Key"), !apiKey.isEmpty else {
@@ -51,24 +73,7 @@ struct ElevenLabs: SantaVoice {
         let cleaned = text.cleanup()
         print("\(file): \(cleaned)")
         do {
-            let url = "https://api-global-preview.elevenlabs.io/v1/text-to-speech/\(voiceID)?output_format=\(outputFormat)&optimize_streaming_latency=4"
-            var req = URLRequest(url: URL(string: url)!)
-            req.httpMethod = "POST"
-            req.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try JSONEncoder().encode(Input(
-                text: cleaned,
-                model_id: modelID,
-                language_code: language,
-                voice_settings: VoiceSettings(
-                    stability: stability,
-                    use_speaker_boost: true,
-                    similarity_boost: similarity,
-                    style: style,
-                    speed: speed
-                ),
-                previous_text: "Ho, ho, ho. God Jul!"
-            ))
+            let req = try makeRequest(apiKey: apiKey, text: cleaned)
             if let (data, response) = try? await URLSession.shared.data(for: req) {
                 guard let urlResponse = response as? HTTPURLResponse else { return }
                 guard urlResponse.statusCode == 200 else { return }
@@ -80,6 +85,32 @@ struct ElevenLabs: SantaVoice {
             print(error)
         }
     }
-    
+
     func speak() async {}
+
+    func ttsToFile(_ fileURL: URL, _ text: String) async -> Bool {
+        guard let apiKey = getAPIKey("Elevenlabs API Key"), !apiKey.isEmpty else {
+            print("Missing ElevenLabs API key")
+            return false
+        }
+        let cleaned = text.cleanup()
+        guard !cleaned.isEmpty else {
+            print("TTS generation skipped: empty text for \(fileURL.lastPathComponent)")
+            return false
+        }
+        do {
+            let req = try makeRequest(apiKey: apiKey, text: cleaned)
+            let (data, response) = try await URLSession.shared.data(for: req)
+            guard let urlResponse = response as? HTTPURLResponse else { return false }
+            guard urlResponse.statusCode == 200 else {
+                print("ElevenLabs TTS server error: \(urlResponse.statusCode)")
+                return false
+            }
+            try data.write(to: fileURL)
+            return true
+        } catch {
+            print("ElevenLabs TTS generation failed: \(error)")
+            return false
+        }
+    }
 }

@@ -57,7 +57,7 @@ struct OpenAI: Think {
             ]
         ]
 
-        mapPenalties(into: &body, from: options)
+        //mapPenalties(into: &body, from: options)
         if let seed = options.seed { body["seed"] = seed }
         if !options.stop.isEmpty { body["stop"] = options.stop }
 
@@ -105,7 +105,7 @@ struct OpenAI: Think {
             "function": ["name": modelNameForTool]
         ]
 
-        mapPenalties(into: &body, from: options)
+        //mapPenalties(into: &body, from: options)
         if let seed = options.seed { body["seed"] = seed }
         if !options.stop.isEmpty { body["stop"] = options.stop }
 

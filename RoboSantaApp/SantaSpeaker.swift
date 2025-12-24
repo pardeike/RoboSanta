@@ -5,26 +5,37 @@ import Foundation
 struct SantaSpeaker {
     
     static let baseSystem = """
-Du är en svensk copywriter. Skriv kort och oväntat, lite roligt.
+Du är en svensk copywriter. Skriv kort, oväntat och tydligt roligare.
+Ton: privat hemma, mer humor, busig, lite fräck och flamsig men rumsren.
+Var inte överdrivet försiktig, men håll det alltid lämpligt och tryggt (inget som riskerar att flaggas).
 Undvik klichéer/stereotyper. En rad per fält. Ok att säga "ho ho ho".
 Skriv bara på Svenska.
 Du talar till exakt en person rakt framför dig.
 Använd "du/din/ditt".
 Svara endast med JSON som matchar schemat.
 """
+
+    private static let openAIAPIKey = getAPIKeyFromFile("OPENAI_API_KEY")
+        ?? getAPIKey("OpenAI API Key")
+        ?? "none"
     
-    let passByTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten försöker starta ett snabbt samtal i korridoren.")
-    let peppTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten lyfter stämningen på ett personligt sätt.")
-    let quizTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten ställer en ultrakort fråga med tre svarsalternativ.")
-    let jokeTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten antyder en smakfull hemlighet och ger en stilren komplimang.")
-    let pointingTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten pekar åt personen för att ge ett kort råd eller en skämtsam varning.")
+    let passByTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten startar ett snabbt samtal hemma i en privat miljö.")
+    let peppTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten lyfter stämningen hemma med mer humor och bus.")
+    let quizTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten ställer en ultrakort, lite fräck men rumsren fråga med tre svarsalternativ.")
+    let jokeTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten antyder en busig hemlighet och ger en lättsam komplimang.")
+    let pointingTemplate = PromptTemplate(system: SantaSpeaker.baseSystem, scene: "Tomten pekar åt personen hemma för att ge ett kort råd eller en skämtsam varning.")
     
-    let thinker: Think = AppleIntelligence()
-    // static let thinker: Think = Koala()
-    // static let thinker: Think = OllamaThink(modelName: "qwen3:8b")
+    // let thinker: Think = AppleIntelligence()
+    // let thinker: Think = Koala()
+    // let thinker: Think = OllamaThink(modelName: "qwen3:8b")
+    let thinker: Think = OpenAI(
+        modelName: "gpt-5.2",
+        baseURL: "https://api.openai.com/v1",
+        apiKey: SantaSpeaker.openAIAPIKey
+    )
     
-    let voice: SantaVoice = RoboSantaTTS()
-    // static let santa: SantaVoice = ElevenLabs()
+    //let voice: SantaVoice = RoboSantaTTS()
+    let voice: SantaVoice = ElevenLabs()
     
     /// Queue manager for storing generated conversation sets
     let queueManager: SpeechQueueManager
@@ -271,8 +282,17 @@ Svara endast med JSON som matchar schemat.
         
         print("📝 TTS: \(fileURL.lastPathComponent) <- \(cleaned)")
         
-        guard await (voice as? RoboSantaTTS)?.server.waitUntilReady() ?? true else {
-            print("TTS server not ready")
+        if let elevenLabs = voice as? ElevenLabs {
+            return await elevenLabs.ttsToFile(fileURL, cleaned)
+        }
+        
+        if let roboSantaTTS = voice as? RoboSantaTTS {
+            guard await roboSantaTTS.server.waitUntilReady() else {
+                print("TTS server not ready")
+                return false
+            }
+        } else {
+            print("Unsupported SantaVoice for file synthesis: \(type(of: voice))")
             return false
         }
         

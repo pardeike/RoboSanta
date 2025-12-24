@@ -44,6 +44,40 @@ func getAPIKey(_ name: String) -> String? {
     return nil
 }
 
+func getAPIKeyFromFile(_ name: String, fileName: String = ".api-keys") -> String? {
+    let fileURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(fileName)
+    guard let contents = try? String(contentsOf: fileURL, encoding: .utf8) else { return nil }
+    let target = name.lowercased()
+    var fallbackValue: String?
+    var fallbackCount = 0
+
+    for rawLine in contents.split(whereSeparator: \.isNewline) {
+        var line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        if line.isEmpty || line.hasPrefix("#") { continue }
+        if line.hasPrefix("export ") {
+            line = String(line.dropFirst("export ".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let separatorIndex = line.firstIndex(of: "=") ?? line.firstIndex(of: ":") {
+            let key = String(line[..<separatorIndex])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let value = String(line[line.index(after: separatorIndex)...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if key == target { return value }
+        } else {
+            fallbackCount += 1
+            if fallbackCount == 1 {
+                fallbackValue = line
+            } else {
+                fallbackValue = nil
+            }
+        }
+    }
+
+    return fallbackValue
+}
+
 func fixQuiz(_ quiz: QuizOut) -> (String, String, String, String) {
     let q = quiz.question
     let a1 = quiz.answer1

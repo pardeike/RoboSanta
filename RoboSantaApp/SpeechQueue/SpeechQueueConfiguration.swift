@@ -36,7 +36,7 @@ struct SpeechQueueConfiguration: Equatable, Sendable {
             .appendingPathComponent("RoboSanta/SpeechQueue"),
         doneDirectory: URL(fileURLWithPath: NSHomeDirectory())
             .appendingPathComponent("RoboSanta/SpeechQueue/DONE"),
-        maxQueueSize: 500,
+        maxQueueSize: 5,
         minQueueSize: 5,
         generationThrottleSeconds: 0,
         queueFullCheckIntervalSeconds: 5,
@@ -55,7 +55,7 @@ struct SpeechQueueConfiguration: Equatable, Sendable {
     init(
         queueDirectory: URL,
         doneDirectory: URL,
-        maxQueueSize: Int = 500,
+        maxQueueSize: Int = 5,
         minQueueSize: Int = 5,
         generationThrottleSeconds: Int = 0,
         queueFullCheckIntervalSeconds: Int = 5,

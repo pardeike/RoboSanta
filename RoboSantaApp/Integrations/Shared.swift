@@ -16,7 +16,7 @@ struct PromptTemplate {
 }
 
 struct GenerationOptions {
-    var temperature: Double = 0.9
+    var temperature: Double = 0.7
     var topP: Double = 0.95 // was 0.92
     var topK: Int = 50 // was 60
     var repeatPenalty: Double = 1.08 // was 1.1
