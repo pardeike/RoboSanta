@@ -10,8 +10,9 @@ struct ElevenLabs: SantaVoice {
     // let voiceID = "2gPFXx8pN3Avh27Dw5Ma" // Oxley
     
     // CUSTOM VOICES (stability:0,similarity:0,style:0,speed:0.7)
-    let voiceID = "xVgWNga54iJ6TyFXlpOC" // Björn Gustafson
+    // let voiceID = "xVgWNga54iJ6TyFXlpOC" // Björn Gustafson
     // let voiceID = "VyHbBNJj3GOP6WZmSX5B" // ComSenze
+    let voiceID = "9rVZvksFwnsjmbxBdx7z" // GW Persson
     
     //let stability = 0.3
     //let similarity = 1.0

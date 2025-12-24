@@ -46,7 +46,17 @@ func getAPIKey(_ name: String) -> String? {
 
 func getAPIKeyFromFile(_ name: String, fileName: String = ".api-keys") -> String? {
     let fileURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(fileName)
-    guard let contents = try? String(contentsOf: fileURL, encoding: .utf8) else { return nil }
+    guard let data = try? Data(contentsOf: fileURL) else { return nil }
+    if let jsonObject = try? JSONSerialization.jsonObject(with: data),
+       let dict = jsonObject as? [String: Any] {
+        let target = name.lowercased()
+        for (key, value) in dict {
+            if key.lowercased() == target, let stringValue = value as? String {
+                return stringValue
+            }
+        }
+    }
+    guard let contents = String(data: data, encoding: .utf8) else { return nil }
     let target = name.lowercased()
     var fallbackValue: String?
     var fallbackCount = 0
