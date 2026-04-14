@@ -5,7 +5,13 @@ import FoundationModels
 @MainActor
 struct OllamaThink: Think {
     let modelName: Ollama.Model.ID
-    let client: Client = .default
+    let client: Client = Client(session: ({
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest  = 600
+        cfg.timeoutIntervalForResource = 600
+        cfg.waitsForConnectivity = true
+        return URLSession(configuration: cfg)
+    })(), host: Client.defaultHost, userAgent: nil)
 
     func generate<T: Decodable>(template: PromptTemplate, topicAction: String, topic: String, model: Model, options: GenerationOptions) async throws -> T {
         

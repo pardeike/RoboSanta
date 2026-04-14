@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0640E8BE2EB8FAF8005F6FB3 /* Ollama in Frameworks */ = {isa = PBXBuildFile; productRef = 0640E8BD2EB8FAF8005F6FB3 /* Ollama */; };
+		06C3C5DE2F8E516F00A99FE7 /* Ollama in Frameworks */ = {isa = PBXBuildFile; productRef = 06C3C5DD2F8E516F00A99FE7 /* Ollama */; };
 		E11466DF2EA8E7ED00298E72 /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E130C9742E4EA505009DCC95 /* FoundationModels.framework */; };
 		E11466E22EA8E81B00298E72 /* Phidget22.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E103C8B72E4E67CE007662B4 /* Phidget22.framework */; };
 /* End PBXBuildFile section */
@@ -35,6 +36,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				06C3C5DE2F8E516F00A99FE7 /* Ollama in Frameworks */,
 				0640E8BE2EB8FAF8005F6FB3 /* Ollama in Frameworks */,
 				E11466E22EA8E81B00298E72 /* Phidget22.framework in Frameworks */,
 				E11466DF2EA8E7ED00298E72 /* FoundationModels.framework in Frameworks */,
@@ -101,6 +103,7 @@
 			name = RoboSanta;
 			packageProductDependencies = (
 				0640E8BD2EB8FAF8005F6FB3 /* Ollama */,
+				06C3C5DD2F8E516F00A99FE7 /* Ollama */,
 			);
 			productName = RoboSantaApp;
 			productReference = E11466D42EA8E7B200298E72 /* RoboSanta.app */;
@@ -131,7 +134,7 @@
 			mainGroup = E103C7602E4E671D007662B4;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				0640E8BC2EB8FAF8005F6FB3 /* XCLocalSwiftPackageReference "../ollama-swift" */,
+				06C3C5DC2F8E516F00A99FE7 /* XCLocalSwiftPackageReference "../ollama-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E103C76A2E4E671D007662B4 /* Products */;
@@ -301,21 +304,28 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = W65292CD8T;
-				ENABLE_APP_SANDBOX = NO;
+				DEVELOPMENT_TEAM = U69L99G3AF;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(LOCAL_LIBRARY_DIR)/Frameworks",
@@ -356,21 +366,28 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = W65292CD8T;
-				ENABLE_APP_SANDBOX = NO;
+				DEVELOPMENT_TEAM = U69L99G3AF;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = NO;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
-				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = YES;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(LOCAL_LIBRARY_DIR)/Frameworks",
@@ -428,7 +445,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		0640E8BC2EB8FAF8005F6FB3 /* XCLocalSwiftPackageReference "../ollama-swift" */ = {
+		06C3C5DC2F8E516F00A99FE7 /* XCLocalSwiftPackageReference "../ollama-swift" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../ollama-swift";
 		};
@@ -436,6 +453,10 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		0640E8BD2EB8FAF8005F6FB3 /* Ollama */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Ollama;
+		};
+		06C3C5DD2F8E516F00A99FE7 /* Ollama */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = Ollama;
 		};
